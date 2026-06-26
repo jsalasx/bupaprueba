@@ -1,0 +1,35 @@
+<div class="container">
+  <h2>Test Google Login</h2>
+
+  <div id="google-btn"></div>
+
+  <hr />
+
+  <div>
+    <h1>Login state: {{ loginSuccess() ? 'Success' : 'Not logged in' }}</h1>
+  </div>
+
+  <div *ngIf="loading()" class="alert alert-loading">
+    <span class="alert-icon">⏳</span>
+    <span>Autenticando con Google, por favor espera...</span>
+  </div>
+
+  <div *ngIf="loginSuccess() && !loading()" class="alert alert-success">
+    <span class="alert-icon">✅</span>
+    <div class="alert-content">
+      <strong>¡Inicio de sesión exitoso!</strong>
+      <pre *ngIf="response()">{{ response() | json }}</pre>
+      <span *ngIf="!response()">El backend respondió correctamente.</span>
+    </div>
+    <button class="alert-close" (click)="clearSuccess()">✕</button>
+  </div>
+
+  <div *ngIf="error() && !loading()" class="alert alert-error">
+    <span class="alert-icon">❌</span>
+    <div class="alert-content">
+      <strong>Error al iniciar sesión</strong>
+      <pre>{{ error() | json }}</pre>
+    </div>
+    <button class="alert-close" (click)="clearError()">✕</button>
+  </div>
+</div>
