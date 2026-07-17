@@ -17,6 +17,13 @@
     "@angular/forms": "^22.0.0",
     "@angular/platform-browser": "^22.0.0",
     "@angular/router": "^22.0.0",
+    "@capacitor-community/apple-sign-in": "^7.1.0",
+    "@capacitor/app": "^8.1.0",
+    "@capacitor/browser": "^8.0.3",
+    "@capacitor/cli": "^8.4.1",
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
+    "@capgo/capacitor-native-biometric": "^8.4.11",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"
   },

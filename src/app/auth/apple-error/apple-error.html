@@ -1,0 +1,11 @@
+<div class="container">
+  <div class="alert alert-error">
+    <span class="alert-icon">❌</span>
+    <div class="alert-content">
+      <strong>No pudimos iniciar tu sesión</strong>
+      <span>{{ message() }}</span>
+    </div>
+  </div>
+
+  <button class="btn-retry" (click)="retry()">Volver a intentar</button>
+</div>

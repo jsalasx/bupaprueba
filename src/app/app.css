@@ -1,0 +1,22 @@
+.reload-btn {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  z-index: 999;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  color: #444;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  backdrop-filter: blur(4px);
+  transition: background 0.2s;
+}
+
+.reload-btn:hover {
+  background: #fff;
+  border-color: #0057b8;
+  color: #0057b8;
+}

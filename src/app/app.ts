@@ -1,13 +1,14 @@
-import { Component, signal } from '@angular/core';
+import { Component } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
-import { GoogleLoginTest } from "./google-login-test/google-login-test";
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, GoogleLoginTest],
+  imports: [RouterOutlet],
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
 export class App {
-  protected readonly title = signal('bupaprueba');
+  reload(): void {
+    window.location.reload();
+  }
 }

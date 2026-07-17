@@ -1,0 +1,29 @@
+<div class="page">
+  <div class="card">
+    <div class="icon">🔐</div>
+    <h1>Activar biometría</h1>
+    <p class="subtitle">
+      Activa Face ID o Touch ID para iniciar sesión de forma rápida y segura la próxima vez.
+    </p>
+
+    @if (error()) {
+      <div class="alert alert-error">
+        ❌ {{ error() }}
+      </div>
+    }
+
+    <div class="actions">
+      <button class="btn btn-primary" (click)="activateBiometrics()" [disabled]="loading()">
+        @if (loading()) {
+          <span>Activando...</span>
+        } @else {
+          <span>Activar Face ID / Touch ID</span>
+        }
+      </button>
+
+      <button class="btn btn-secondary" (click)="skipToHome()" [disabled]="loading()">
+        Ahora no, ir al inicio
+      </button>
+    </div>
+  </div>
+</div>
