@@ -45,13 +45,23 @@
     <div id="google-btn" [class.hidden]="!googleReady()"></div>
   }
 
-  <!-- ── Sign in with Apple (redirección de servidor / form_post) ── -->
+  <!-- ── Sign in with Apple (nativo en iOS, redirect en web) ── -->
   <app-apple-sign-in-button
     theme="black"
     [disabled]="loading()"
-    (press)="loginWithApple()"
+    (press)="onAppleClick()"
     style="display:block; margin-top: 0.75rem;">
   </app-apple-sign-in-button>
+
+  @if (appleNativeToken()) {
+    <div class="alert alert-loading" style="margin-top: 0.75rem; word-break: break-all;">
+      <span class="alert-icon">🍎</span>
+      <div class="alert-content">
+        <strong>identityToken recibido de Apple (verificación):</strong>
+        <span style="font-size: 0.7rem;">{{ appleNativeToken() }}</span>
+      </div>
+    </div>
+  }
 
   <div class="divider"><span>o</span></div>
 

@@ -6,8 +6,14 @@ import { Browser } from '@capacitor/browser';
 import { App, URLOpenListenerEvent } from '@capacitor/app';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { firstValueFrom } from 'rxjs';
+import {
+  SignInWithApple,
+  SignInWithAppleOptions,
+  SignInWithAppleResponse,
+} from '@capacitor-community/apple-sign-in';
 import { AuthService } from '../auth.service';
 import { AppleSignInButton } from '../apple-sign-in-button/apple-sign-in-button';
+import { APPLE_SERVICES_ID, APPLE_WEB_REDIRECT_URI } from '../apple-auth.config';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../pkce.util';
 
 declare const google: any;
@@ -45,6 +51,9 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   // Biometric state
   biometricLoading = signal(false);
   biometricError = signal<string | null>(null);
+
+  // Apple native state — token para verificar en device antes de que backend tenga el endpoint
+  appleNativeToken = signal<string | null>(null);
 
   constructor(
     private zone: NgZone,
@@ -147,13 +156,86 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
     });
   }
 
-  // ── Sign in with Apple (redirección de servidor) ─────────────────────────
+  // ── Sign in with Apple ────────────────────────────────────────────────────
 
-  /** Navegación real del navegador hacia el backend; no vuelve por aquí. */
+  /** El botón elige el flujo según plataforma: nativo en iOS, redirect en web. */
+  onAppleClick(): void {
+    if (this.isNative()) {
+      this.loginWithAppleNative();
+    } else {
+      this.loginWithApple();
+    }
+  }
+
+  /** Flujo WEB: navegación real del navegador hacia el backend; no vuelve por aquí. */
   loginWithApple(): void {
     this.loading.set(true);
     this.error.set(null);
     this.auth.loginWithApple();
+  }
+
+  /** Flujo NATIVO iOS: hoja nativa de Apple (Face ID) + exchange contra backend. */
+  async loginWithAppleNative(): Promise<void> {
+    this.loading.set(true);
+    this.error.set(null);
+    this.appleNativeToken.set(null);
+
+    try {
+      // nonce en claro: iOS envía su SHA-256 a Apple; el backend valida contra este.
+      const nonce = generateState();
+
+      const options: SignInWithAppleOptions = {
+        clientId: APPLE_SERVICES_ID,
+        redirectURI: APPLE_WEB_REDIRECT_URI,
+        scopes: 'email name',
+        nonce,
+      };
+
+      const result: SignInWithAppleResponse = await SignInWithApple.authorize(options);
+      const r = result.response;
+
+      if (!r?.identityToken) {
+        throw new Error('Apple no devolvió un identityToken.');
+      }
+
+      this.auth
+        .exchangeAppleCode({
+          identityToken: r.identityToken,
+          authorizationCode: r.authorizationCode,
+          nonce,
+          email: r.email ?? undefined,
+          givenName: r.givenName ?? undefined,
+          familyName: r.familyName ?? undefined,
+        })
+        .subscribe({
+          next: () => {
+            this.loading.set(false);
+            this.loginSuccess.set(true);
+            setTimeout(() => this.router.navigate(['/home']), 800);
+          },
+          error: (err) => {
+            this.loading.set(false);
+            // Backend aún sin /auth/apple/exchange → mostramos que Apple sí funcionó.
+            if (err?.status === 404 || err?.status === 0) {
+              this.appleNativeToken.set(r.identityToken);
+              this.error.set(
+                'Apple te identificó correctamente. Falta que el backend implemente /auth/apple/exchange.',
+              );
+            } else {
+              const body = err.error ?? {};
+              this.error.set(body.message ?? body.code ?? 'Error al iniciar sesión con Apple.');
+            }
+          },
+        });
+    } catch (err: any) {
+      this.loading.set(false);
+      // El usuario canceló la hoja nativa de Apple (ASAuthorizationError.canceled = 1001).
+      if (err?.code === '1001' || /cancel/i.test(err?.message ?? '')) {
+        this.error.set('El inicio de sesión con Apple fue cancelado.');
+        return;
+      }
+      this.error.set(err?.message ?? 'No se pudo iniciar sesión con Apple.');
+    }
   }
 
   // ── Flujo web (Google Identity Services) ──────────────────────────────────

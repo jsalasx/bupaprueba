@@ -17,20 +17,22 @@ export class BearerTokenInterceptor implements HttpInterceptor {
     req: HttpRequest<any>,
     next: HttpHandler,
   ): Observable<HttpEvent<any>> {
+    // ngrok free devuelve una página HTML de advertencia si falta este header;
+    // con él, deja pasar la petición al backend real. (Temporal, solo pruebas.)
+    const setHeaders: Record<string, string> = {};
+    if (req.url.includes('ngrok')) {
+      setHeaders['ngrok-skip-browser-warning'] = 'true';
+    }
+
     // Flujo Apple (form_post): la sesión viaja en una cookie HttpOnly cross-site.
     // /auth/me comparte base con los endpoints de Google/biometría, así que se
     // discrimina por la URL exacta: se apoya en la cookie (withCredentials) y
     // NO lleva el bearer público de Bupa (nada de headers manuales de sesión).
     if (req.url.startsWith(AUTH_ME_URL)) {
-      return next.handle(req.clone({ withCredentials: true }));
+      return next.handle(req.clone({ withCredentials: true, setHeaders }));
     }
 
-    const clonedReq = req.clone({
-      setHeaders: {
-        Authorization: `Bearer ${this.PUBLIC_TOKEN}`,
-      },
-    });
-
-    return next.handle(clonedReq);
+    setHeaders['Authorization'] = `Bearer ${this.PUBLIC_TOKEN}`;
+    return next.handle(req.clone({ setHeaders }));
   }
 }

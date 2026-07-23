@@ -21,7 +21,16 @@
  *   Access-Control-Allow-Credentials: true y el origen exacto de Angular en
  *   Allow-Origin (no "*"). En QA ese origen es http://localhost:4200.
  */
-export const APPLE_API_BASE = 'https://api-qa.bupa.cl/portal-blua/ms-controller';
+// Backend de pruebas vía ngrok (mismo path que Kong: /portal-blua/ms-controller).
+// Para volver a QA, restaurar: https://api-qa.bupa.cl/portal-blua/ms-controller
+export const APPLE_API_BASE =
+  'https://f8b3-2800-bf0-3804-fe9-79d0-621d-2b44-e740.ngrok-free.app/portal-blua/ms-controller';
+
+/** Services ID (web) y return URL registrados en Apple. El plugin nativo los exige,
+ *  aunque en iOS nativo el aud del token termina siendo el Bundle ID de la app. */
+export const APPLE_SERVICES_ID = 'cl.bupa.blua.qa.signin';
+export const APPLE_WEB_REDIRECT_URI =
+  'https://api-qa.bupa.cl/portal-blua/ms-controller/auth/apple/callback';
 
 /** Endpoint al que el navegador NAVEGA (window.location.href), no se llama por fetch. */
 export const APPLE_LOGIN_URL = `${APPLE_API_BASE}/auth/apple/login`;
