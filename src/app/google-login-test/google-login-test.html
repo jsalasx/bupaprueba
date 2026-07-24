@@ -1,11 +1,11 @@
 <div class="container">
   <h2>Iniciar sesión</h2>
 
-  <!-- ── iOS nativo: botón que abre SFSafariViewController ── -->
+  <!-- ── Nativo: Android usa el plugin de Google; iOS abre SFSafariViewController ── -->
   @if (isNative()) {
     <button
       class="btn-google-native"
-      (click)="loginWithGoogleNative()"
+      (click)="onGoogleNativeClick()"
       [disabled]="loading()">
       @if (loading()) {
         <span>Abriendo sesión...</span>

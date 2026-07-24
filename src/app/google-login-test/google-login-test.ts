@@ -5,6 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
 import { App, URLOpenListenerEvent } from '@capacitor/app';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
+import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { firstValueFrom } from 'rxjs';
 import {
   SignInWithApple,
@@ -41,6 +42,7 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   public readonly authAzure = inject(AuthAzureService);
 
   isNative = signal(Capacitor.isNativePlatform());
+  isAndroid = signal(Capacitor.getPlatform() === 'android');
 
   // Web GSI state
   googleReady = signal(false);
@@ -64,8 +66,14 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
     private auth: AuthService,
   ) {}
 
-  async ngOnInit(): Promise<void> { 
-    await this.authAzure.initialize();  
+  async ngOnInit(): Promise<void> {
+    await this.authAzure.initialize();
+
+    // GoogleAuth debe inicializarse antes de cualquier signIn(). En nativo lee
+    // la config de capacitor.config.ts (scopes + serverClientId).
+    if (this.isNative()) {
+      GoogleAuth.initialize();
+    }
   }
 
   /**
@@ -82,7 +90,7 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   }
 
   async ngAfterViewInit(): Promise<void> {
-    if (this.isNative()) {
+    if (this.isNative() && !this.isAndroid()) {
       // iOS: escuchar el callback de OAuth (URL scheme)
       this.urlOpenListener = await App.addListener(
         'appUrlOpen',
@@ -97,6 +105,53 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   ngOnDestroy(): void {
     this.stopPolling();
     this.urlOpenListener?.remove();
+  }
+
+  // ── Google nativo: elige flujo según plataforma ───────────────────────────
+
+  /** Android usa el plugin nativo (Google Play Services); iOS sigue con PKCE. */
+  onGoogleNativeClick(): void {
+    if (this.isAndroid()) {
+      this.loginWithGoogleAndroid();
+    } else {
+      this.loginWithGoogleNative();
+    }
+  }
+
+  // ── Flujo nativo Android (@codetrix-studio/capacitor-google-auth) ─────────
+
+  /**
+   * Abre el selector de cuentas nativo de Android y canjea el `idToken` contra
+   * el backend con el mismo endpoint que el flujo web (`/auth/google`).
+   */
+  async loginWithGoogleAndroid(): Promise<void> {
+    this.loading.set(true);
+    this.error.set(null);
+    this.loginSuccess.set(false);
+
+    try {
+      const user = await GoogleAuth.signIn();
+      console.log('Usuario de Google:', user);
+
+      const idToken = user.authentication?.idToken;
+      if (!idToken) {
+        throw new Error('Google no devolvió un idToken.');
+      }
+
+      this.onGoogleIdToken(idToken);
+    } catch (err: any) {
+      console.error('Error en login con Google:', err);
+      this.loading.set(false);
+
+      // El usuario cerró el selector de cuentas (status 12501 de Play Services).
+      const msg = String(err?.message ?? err?.error ?? '');
+      if (/12501|cancel/i.test(msg)) {
+        this.error.set('El inicio de sesión con Google fue cancelado.');
+        return;
+      }
+
+      this.error.set(msg || 'No se pudo iniciar sesión con Google.');
+    }
   }
 
   // ── Flujo nativo iOS (SFSafariViewController + PKCE) ──────────────────────

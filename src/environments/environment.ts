@@ -13,7 +13,7 @@ export const environment = {
   production: false,
 
   /** Google, Azure y biometría. */
-  apiBaseUrl: 'http://192.168.100.203:8080/portal-blua/ms-controller',
+  apiBaseUrl: 'https://92fc-2800-bf0-3804-fe9-8c96-2c7a-464e-2445.ngrok-free.app/portal-blua/ms-controller',
 
   /** Sign in with Apple. */
   appleApiBaseUrl: 'https://api-qa.bupa.cl/portal-blua/ms-controller',

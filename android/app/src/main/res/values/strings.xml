@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">bupaprueba</string>
+    <string name="title_activity_main">bupaprueba</string>
+    <string name="package_name">com.drkapps.pruebabiometria</string>
+    <string name="custom_url_scheme">com.drkapps.pruebabiometria</string>
+    <string name="server_client_id">537881986178-23dhaeonqr38trcrmj76ke6hs64j8qpk.apps.googleusercontent.com</string>
+</resources>
