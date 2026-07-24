@@ -32,7 +32,13 @@ export class BearerTokenInterceptor implements HttpInterceptor {
       return next.handle(req.clone({ withCredentials: true, setHeaders }));
     }
 
-    setHeaders['Authorization'] = `Bearer ${this.PUBLIC_TOKEN}`;
+    // El bearer público es solo el DEFAULT para endpoints anónimos. Si el
+    // servicio ya puso su propio Authorization (p. ej. el accessToken del usuario
+    // en /auth/biometric/register), pisarlo aquí rompería la petición.
+    if (!req.headers.has('Authorization')) {
+      setHeaders['Authorization'] = `Bearer ${this.PUBLIC_TOKEN}`;
+    }
+
     return next.handle(req.clone({ setHeaders }));
   }
 }

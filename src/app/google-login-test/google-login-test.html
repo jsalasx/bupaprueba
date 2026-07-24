@@ -63,6 +63,25 @@
     </div>
   }
 
+  <!-- ── Microsoft (Azure AD / Entra ID) ── -->
+  <button
+    type="button"
+    class="btn-microsoft"
+    (click)="loginAzure()"
+    [disabled]="authAzure.loading() || loading()">
+    <svg viewBox="0 0 21 21" width="18" height="18" aria-hidden="true">
+      <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+      <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+      <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+      <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+    </svg>
+    @if (authAzure.loading()) {
+      <span>Redirigiendo a Microsoft...</span>
+    } @else {
+      <span>Continuar con Microsoft</span>
+    }
+  </button>
+
   <div class="divider"><span>o</span></div>
 
   <button
@@ -109,6 +128,15 @@
         <strong>Error al iniciar sesión</strong>
         <span>{{ error() }}</span>
       </div>
+      <button class="alert-close" (click)="clearError()">✕</button>
+    </div>
+  }
+
+
+  @if (authAzure.error()) {
+    <div class="alert alert-error" style="margin-top: 0.75rem;">
+      <span class="alert-icon">❌</span>
+      <div class="alert-content"><strong>{{ authAzure.error() }}</strong></div>
       <button class="alert-close" (click)="clearError()">✕</button>
     </div>
   }

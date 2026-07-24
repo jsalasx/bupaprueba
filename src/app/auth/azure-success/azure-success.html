@@ -1,0 +1,21 @@
+<div class="container">
+  @if (loading()) {
+    <div class="loading">
+      <div class="spinner"></div>
+      <span>Iniciando sesión con Azure…</span>
+    </div>
+  } @else if (error(); as msg) {
+    <div class="success">
+      <span class="icon">❌</span>
+      <span>{{ msg }}</span>
+    </div>
+  } @else {
+    <div class="success">
+      <span class="icon">✅</span>
+      <span>Login success con Azure</span>
+      @if (account(); as acc) {
+        <small>{{ acc.username }}</small>
+      }
+    </div>
+  }
+</div>

@@ -1,3 +1,5 @@
+import { environment } from '../environments/environment';
+
 /**
  * Configuración del flujo "Sign in with Apple".
  *
@@ -21,10 +23,8 @@
  *   Access-Control-Allow-Credentials: true y el origen exacto de Angular en
  *   Allow-Origin (no "*"). En QA ese origen es http://localhost:4200.
  */
-// Backend de pruebas vía ngrok (mismo path que Kong: /portal-blua/ms-controller).
-// Para volver a QA, restaurar: https://api-qa.bupa.cl/portal-blua/ms-controller
-export const APPLE_API_BASE =
-  'https://f8b3-2800-bf0-3804-fe9-79d0-621d-2b44-e740.ngrok-free.app/portal-blua/ms-controller';
+// Base del flujo Apple; se configura en environment.appleApiBaseUrl (QA: https://api-qa.bupa.cl/portal-blua/ms-controller).
+export const APPLE_API_BASE = environment.appleApiBaseUrl;
 
 /** Services ID (web) y return URL registrados en Apple. El plugin nativo los exige,
  *  aunque en iOS nativo el aud del token termina siendo el Bundle ID de la app. */

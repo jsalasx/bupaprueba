@@ -110,6 +110,34 @@
   cursor: not-allowed;
 }
 
+/* Botón de Microsoft: mismo alto y radio que Google/Apple, con la marca oficial. */
+.btn-microsoft {
+  width: 100%;
+  margin-top: 0.75rem;
+  padding: 0.85rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid #8c8c8c;
+  background: #fff;
+  color: #5e5e5e;
+  transition: background 0.2s;
+}
+
+.btn-microsoft:not(:disabled):hover {
+  background: #f3f3f3;
+}
+
+.btn-microsoft:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 hr {
   margin: 1.5rem 0;
   border: none;

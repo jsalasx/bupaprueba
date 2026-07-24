@@ -1,4 +1,4 @@
-import { Component, AfterViewInit, OnDestroy, NgZone, signal } from '@angular/core';
+import { Component, AfterViewInit, OnDestroy, NgZone, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
@@ -11,10 +11,11 @@ import {
   SignInWithAppleOptions,
   SignInWithAppleResponse,
 } from '@capacitor-community/apple-sign-in';
-import { AuthService } from '../auth.service';
+import { apiErrorMessage, AuthService } from '../auth.service';
 import { AppleSignInButton } from '../apple-sign-in-button/apple-sign-in-button';
 import { APPLE_SERVICES_ID, APPLE_WEB_REDIRECT_URI } from '../apple-auth.config';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../pkce.util';
+import { AuthAzureService } from '../auth/auth.service';
 
 declare const google: any;
 
@@ -36,6 +37,8 @@ const REDIRECT_URI = `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.split('.
 export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   private pollInterval: ReturnType<typeof setInterval> | null = null;
   private urlOpenListener: { remove: () => Promise<void> } | null = null;
+
+  public readonly authAzure = inject(AuthAzureService);
 
   isNative = signal(Capacitor.isNativePlatform());
 
@@ -60,6 +63,23 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
     private router: Router,
     private auth: AuthService,
   ) {}
+
+  async ngOnInit(): Promise<void> { 
+    await this.authAzure.initialize();  
+  }
+
+  /**
+   * Login con Microsoft: navega a Entra ID en esta misma pestaña. El post-login
+   * (canje del id_token y salto a /biometria) ocurre al volver a /auth-azure,
+   * igual que el flujo de Apple.
+   */
+  async loginAzure(): Promise<void> {
+    await this.authAzure.login();
+  }
+
+  async logoutAzure(): Promise<void> {
+    await this.authAzure.logout();
+  }
 
   async ngAfterViewInit(): Promise<void> {
     if (this.isNative()) {
@@ -310,6 +330,7 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   clearError(): void {
     this.error.set(null);
     this.biometricError.set(null);
+    this.authAzure.error.set(null);
   }
 
   async loginWithBiometrics(): Promise<void> {
@@ -345,22 +366,30 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
     } catch (err: any) {
       if (err?.code === 10) return; // usuario canceló Face ID / Touch ID
       console.error('[Login] Error biométrico:', err);
-      this.biometricError.set(err?.message ?? 'Error al autenticar con biometría.');
+      this.biometricError.set(
+        apiErrorMessage(err, 'Error al autenticar con biometría.'),
+      );
     } finally {
       this.biometricLoading.set(false);
     }
   }
 
-  private async authenticateWithCredential(credential: string, deviceId: string): Promise<void> {
+  private async authenticateWithCredential(biometricToken: string, deviceId: string): Promise<void> {
+    const res = await firstValueFrom(this.auth.biometricLogin(biometricToken, deviceId));
+
+    // El backend revoca el token en cada uso y devuelve el siguiente en
+    // `refreshToken`: si no se guarda aquí, el próximo login biométrico falla.
     try {
-      // Intenta login biométrico con backend
-      await firstValueFrom(this.auth.biometricLogin(credential, deviceId));
-      this.router.navigate(['/home']);
-    } catch {
-      // Fallback: el credential guardado es un accessToken (backend no implementado aún)
-      console.warn('[Login] Backend biometric/token no disponible, restaurando sesión con accessToken');
-      this.auth.saveSession({ accessToken: credential, refreshToken: '', expiresIn: 3600 });
-      this.router.navigate(['/home']);
+      await NativeBiometric.setCredentials({
+        username: deviceId,
+        password: res.refreshToken,
+        server: this.auth.BIOMETRIC_SERVER,
+      });
+    } catch (err) {
+      // La sesión ya es válida; solo se pierde el acceso biométrico futuro.
+      console.error('[Login] No se pudo rotar el token biométrico:', err);
     }
+
+    this.router.navigate(['/home']);
   }
 }

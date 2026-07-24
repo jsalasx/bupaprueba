@@ -2,7 +2,7 @@ import { Component, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { firstValueFrom } from 'rxjs';
-import { AuthService } from '../auth.service';
+import { apiErrorMessage, AuthService } from '../auth.service';
 
 @Component({
   selector: 'app-biometria',
@@ -49,7 +49,9 @@ export class Biometria {
     } catch (err: any) {
       if (err?.code === 10) return; // usuario canceló Face ID / Touch ID
       console.error('[Biometria] Error al activar:', err);
-      this.error.set(err?.message ?? 'No se pudo activar la biometría. Intenta de nuevo.');
+      this.error.set(
+        apiErrorMessage(err, 'No se pudo activar la biometría. Intenta de nuevo.'),
+      );
     } finally {
       this.loading.set(false);
     }
@@ -60,21 +62,13 @@ export class Biometria {
   }
 
   /**
-   * Intenta obtener un biometricToken del backend.
-   * Si el endpoint aún no existe, usa el accessToken como fallback
-   * para que el flujo funcione durante desarrollo.
+   * Pide el biometricToken al backend. Es lo único que se guarda en el Keychain:
+   * guardar el accessToken como sustituto dejaba una credencial que /auth/biometric/token
+   * rechaza, así que un fallo aquí debe verse, no taparse.
    */
   private async resolveCredential(deviceId: string): Promise<string> {
-    try {
-      const res = await firstValueFrom(this.auth.registerBiometric(deviceId));
-      console.log('[Biometria] biometricToken obtenido del backend');
-      return res.biometricToken;
-    } catch (err) {
-      console.warn('[Biometria] Backend biometric/register no disponible, usando accessToken como fallback:', err);
-      const token = this.auth.accessToken();
-      if (!token) throw new Error('No hay sesión activa. Por favor inicia sesión con Google primero.');
-      return token;
-    }
+    const res = await firstValueFrom(this.auth.registerBiometric(deviceId));
+    return res.biometricToken;
   }
 
   private delay(ms: number): Promise<void> {
