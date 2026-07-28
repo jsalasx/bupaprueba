@@ -1,5 +1,6 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { DeepLinkService } from './deep-link.service';
 
 @Component({
   selector: 'app-root',
@@ -7,7 +8,18 @@ import { RouterOutlet } from '@angular/router';
   templateUrl: './app.html',
   styleUrl: './app.css'
 })
-export class App {
+export class App implements OnInit {
+  private readonly deepLink = inject(DeepLinkService);
+
+  /**
+   * El listener de deep links se registra aquí y no en la pantalla de login:
+   * el callback puede llegar con la app en cualquier ruta, o relanzarla desde
+   * cero, y un listener atado a un componente se pierde en esos casos.
+   */
+  async ngOnInit(): Promise<void> {
+    await this.deepLink.init();
+  }
+
   reload(): void {
     window.location.reload();
   }

@@ -28,6 +28,8 @@ export class BearerTokenInterceptor implements HttpInterceptor {
     // /auth/me comparte base con los endpoints de Google/biometría, así que se
     // discrimina por la URL exacta: se apoya en la cookie (withCredentials) y
     // NO lleva el bearer público de Bupa (nada de headers manuales de sesión).
+    // En Android no hay cookie: la variante /auth/me?token=… se autentica con el
+    // token del deep link y entra por esta misma rama (withCredentials es inocuo).
     if (req.url.startsWith(AUTH_ME_URL)) {
       return next.handle(req.clone({ withCredentials: true, setHeaders }));
     }

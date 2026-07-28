@@ -1,9 +1,8 @@
-import { Component, AfterViewInit, OnDestroy, NgZone, signal, inject } from '@angular/core';
+import { Component, AfterViewInit, OnDestroy, NgZone, computed, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Capacitor } from '@capacitor/core';
 import { Browser } from '@capacitor/browser';
-import { App, URLOpenListenerEvent } from '@capacitor/app';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
 import { firstValueFrom } from 'rxjs';
@@ -15,18 +14,12 @@ import {
 import { apiErrorMessage, AuthService } from '../auth.service';
 import { AppleSignInButton } from '../apple-sign-in-button/apple-sign-in-button';
 import { APPLE_SERVICES_ID, APPLE_WEB_REDIRECT_URI } from '../apple-auth.config';
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, REDIRECT_URI } from '../google-auth.config';
+import { DeepLinkService } from '../deep-link.service';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../pkce.util';
 import { AuthAzureService } from '../auth/auth.service';
 
 declare const google: any;
-
-// Cliente Web — usado solo en el navegador con Google Identity Services
-const GOOGLE_WEB_CLIENT_ID = '537881986178-23dhaeonqr38trcrmj76ke6hs64j8qpk.apps.googleusercontent.com';
-
-// Cliente iOS — crearlo en Google Cloud Console → Credenciales → Tipo: iOS → Bundle ID: com.drkapps.pruebabiometria
-// El redirect URI es siempre: com.googleusercontent.apps.TU_CLIENT_ID_IOS:/
-const GOOGLE_IOS_CLIENT_ID = '537881986178-eugpuu3m6hsh5i94lfmieljjqs4lngvu.apps.googleusercontent.com';
-const REDIRECT_URI = `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.split('.')[0]}:/`;
 
 @Component({
   selector: 'app-google-login-test',
@@ -37,9 +30,9 @@ const REDIRECT_URI = `com.googleusercontent.apps.${GOOGLE_IOS_CLIENT_ID.split('.
 })
 export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   private pollInterval: ReturnType<typeof setInterval> | null = null;
-  private urlOpenListener: { remove: () => Promise<void> } | null = null;
 
   public readonly authAzure = inject(AuthAzureService);
+  private readonly deepLink = inject(DeepLinkService);
 
   isNative = signal(Capacitor.isNativePlatform());
   isAndroid = signal(Capacitor.getPlatform() === 'android');
@@ -48,10 +41,18 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   googleReady = signal(false);
   googleFailed = signal(false);
 
-  // Shared login state
-  loading = signal(false);
-  loginSuccess = signal(false);
-  error = signal<string | null>(null);
+  // Estado de los logins que arrancan y terminan en esta pantalla.
+  private readonly busy = signal(false);
+  private readonly localError = signal<string | null>(null);
+  private readonly localSuccess = signal(false);
+
+  /**
+   * Estado visible = el de esta pantalla + el del servicio de deep links, que es
+   * quien resuelve los callbacks de Apple (Android) y Google (iOS PKCE).
+   */
+  readonly loading = computed(() => this.busy() || this.deepLink.loading());
+  readonly error = computed(() => this.localError() ?? this.deepLink.error());
+  readonly loginSuccess = computed(() => this.localSuccess() || this.deepLink.success());
 
   // Biometric state
   biometricLoading = signal(false);
@@ -90,21 +91,15 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   }
 
   async ngAfterViewInit(): Promise<void> {
-    if (this.isNative() && !this.isAndroid()) {
-      // iOS: escuchar el callback de OAuth (URL scheme)
-      this.urlOpenListener = await App.addListener(
-        'appUrlOpen',
-        (event: URLOpenListenerEvent) => this.zone.run(() => this.handleOAuthCallback(event.url)),
-      );
-    } else {
-      // Web: inicializar el botón de Google Identity Services
+    // Los callbacks por URL scheme los escucha DeepLinkService desde el
+    // componente raíz; aquí solo queda el botón web de Google.
+    if (!this.isNative()) {
       this.waitForGoogle();
     }
   }
 
   ngOnDestroy(): void {
     this.stopPolling();
-    this.urlOpenListener?.remove();
   }
 
   // ── Google nativo: elige flujo según plataforma ───────────────────────────
@@ -125,9 +120,9 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
    * el backend con el mismo endpoint que el flujo web (`/auth/google`).
    */
   async loginWithGoogleAndroid(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
-    this.loginSuccess.set(false);
+    this.busy.set(true);
+    this.localError.set(null);
+    this.localSuccess.set(false);
 
     try {
       const user = await GoogleAuth.signIn();
@@ -141,24 +136,25 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
       this.onGoogleIdToken(idToken);
     } catch (err: any) {
       console.error('Error en login con Google:', err);
-      this.loading.set(false);
+      this.busy.set(false);
 
       // El usuario cerró el selector de cuentas (status 12501 de Play Services).
       const msg = String(err?.message ?? err?.error ?? '');
       if (/12501|cancel/i.test(msg)) {
-        this.error.set('El inicio de sesión con Google fue cancelado.');
+        this.localError.set('El inicio de sesión con Google fue cancelado.');
         return;
       }
 
-      this.error.set(msg || 'No se pudo iniciar sesión con Google.');
+      this.localError.set(msg || 'No se pudo iniciar sesión con Google.');
     }
   }
 
   // ── Flujo nativo iOS (SFSafariViewController + PKCE) ──────────────────────
 
+  /** Abre el consentimiento de Google; el `code` vuelve por deep link a DeepLinkService. */
   async loginWithGoogleNative(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
+    this.busy.set(true);
+    this.localError.set(null);
 
     try {
       const verifier = await generateCodeVerifier();
@@ -183,76 +179,53 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
         url: `https://accounts.google.com/o/oauth2/v2/auth?${params}`,
         presentationStyle: 'fullscreen',
       });
+
+      // A partir de aquí manda el deep link: el spinner lo lleva DeepLinkService.
+      this.busy.set(false);
     } catch (err: any) {
-      this.loading.set(false);
-      this.error.set(err?.message ?? 'No se pudo abrir el navegador.');
+      this.busy.set(false);
+      this.localError.set(err?.message ?? 'No se pudo abrir el navegador.');
     }
-  }
-
-  private handleOAuthCallback(url: string): void {
-    if (!url.startsWith(REDIRECT_URI)) return;
-
-    const params = new URL(url).searchParams;
-    const code = params.get('code');
-    const state = params.get('state');
-    const oauthError = params.get('error');
-
-    const storedState = sessionStorage.getItem('oauth_state');
-    const verifier = sessionStorage.getItem('pkce_verifier') ?? '';
-
-    sessionStorage.removeItem('oauth_state');
-    sessionStorage.removeItem('pkce_verifier');
-
-    Browser.close();
-
-    if (oauthError) {
-      this.loading.set(false);
-      this.error.set('El usuario canceló el inicio de sesión.');
-      return;
-    }
-
-    if (!code || state !== storedState) {
-      this.loading.set(false);
-      this.error.set('Error de seguridad en el flujo OAuth. Intenta de nuevo.');
-      return;
-    }
-
-    this.auth.exchangeGoogleCode(code, verifier, REDIRECT_URI).subscribe({
-      next: () => {
-        this.loading.set(false);
-        this.loginSuccess.set(true);
-        setTimeout(() => this.router.navigate(['/biometria']), 800);
-      },
-      error: (err) => {
-        this.loading.set(false);
-        const body = err.error ?? {};
-        this.error.set(body.message ?? 'Error al completar el inicio de sesión.');
-      },
-    });
   }
 
   // ── Sign in with Apple ────────────────────────────────────────────────────
 
-  /** El botón elige el flujo según plataforma: nativo en iOS, redirect en web. */
+  /**
+   * El botón elige el flujo según plataforma: hoja nativa en iOS, y flujo de
+   * servidor en Android (Custom Tab + deep link) y en web (navegación real).
+   */
   onAppleClick(): void {
-    if (this.isNative()) {
+    if (this.isNative() && !this.isAndroid()) {
       this.loginWithAppleNative();
     } else {
       this.loginWithApple();
     }
   }
 
-  /** Flujo WEB: navegación real del navegador hacia el backend; no vuelve por aquí. */
-  loginWithApple(): void {
-    this.loading.set(true);
-    this.error.set(null);
-    this.auth.loginWithApple();
+  /**
+   * Flujo de SERVIDOR. En web es una navegación real que no vuelve por aquí;
+   * en Android abre un Custom Tab y el resultado lo resuelve DeepLinkService.
+   */
+  async loginWithApple(): Promise<void> {
+    this.busy.set(true);
+    this.localError.set(null);
+
+    try {
+      await this.auth.loginWithApple();
+
+      // En Android el Custom Tab ya está arriba: el estado pasa a manos del
+      // deep link, así que soltamos el spinner local.
+      this.busy.set(false);
+    } catch (err: any) {
+      this.busy.set(false);
+      this.localError.set(err?.message ?? 'No se pudo abrir el inicio de sesión con Apple.');
+    }
   }
 
   /** Flujo NATIVO iOS: hoja nativa de Apple (Face ID) + exchange contra backend. */
   async loginWithAppleNative(): Promise<void> {
-    this.loading.set(true);
-    this.error.set(null);
+    this.busy.set(true);
+    this.localError.set(null);
     this.appleNativeToken.set(null);
 
     try {
@@ -284,32 +257,32 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
         })
         .subscribe({
           next: () => {
-            this.loading.set(false);
-            this.loginSuccess.set(true);
+            this.busy.set(false);
+            this.localSuccess.set(true);
             setTimeout(() => this.router.navigate(['/home']), 800);
           },
           error: (err) => {
-            this.loading.set(false);
+            this.busy.set(false);
             // Backend aún sin /auth/apple/exchange → mostramos que Apple sí funcionó.
             if (err?.status === 404 || err?.status === 0) {
               this.appleNativeToken.set(r.identityToken);
-              this.error.set(
+              this.localError.set(
                 'Apple te identificó correctamente. Falta que el backend implemente /auth/apple/exchange.',
               );
             } else {
               const body = err.error ?? {};
-              this.error.set(body.message ?? body.code ?? 'Error al iniciar sesión con Apple.');
+              this.localError.set(body.message ?? body.code ?? 'Error al iniciar sesión con Apple.');
             }
           },
         });
     } catch (err: any) {
-      this.loading.set(false);
+      this.busy.set(false);
       // El usuario canceló la hoja nativa de Apple (ASAuthorizationError.canceled = 1001).
       if (err?.code === '1001' || /cancel/i.test(err?.message ?? '')) {
-        this.error.set('El inicio de sesión con Apple fue cancelado.');
+        this.localError.set('El inicio de sesión con Apple fue cancelado.');
         return;
       }
-      this.error.set(err?.message ?? 'No se pudo iniciar sesión con Apple.');
+      this.localError.set(err?.message ?? 'No se pudo iniciar sesión con Apple.');
     }
   }
 
@@ -362,20 +335,20 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   }
 
   private onGoogleIdToken(idToken: string): void {
-    this.loading.set(true);
-    this.error.set(null);
-    this.loginSuccess.set(false);
+    this.busy.set(true);
+    this.localError.set(null);
+    this.localSuccess.set(false);
 
     this.auth.googleLogin(idToken).subscribe({
       next: () => {
-        this.loading.set(false);
-        this.loginSuccess.set(true);
+        this.busy.set(false);
+        this.localSuccess.set(true);
         setTimeout(() => this.router.navigate(['/biometria']), 800);
       },
       error: (err) => {
-        this.loading.set(false);
+        this.busy.set(false);
         const body = err.error ?? {};
-        this.error.set(body.message ?? body.code ?? 'Error al iniciar sesión con Google.');
+        this.localError.set(body.message ?? body.code ?? 'Error al iniciar sesión con Google.');
       },
     });
   }
@@ -383,7 +356,8 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
   // ── Login biométrico ───────────────────────────────────────────────────────
 
   clearError(): void {
-    this.error.set(null);
+    this.localError.set(null);
+    this.deepLink.clearError();
     this.biometricError.set(null);
     this.authAzure.error.set(null);
   }

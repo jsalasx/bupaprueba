@@ -1,8 +1,15 @@
 import { Injectable, signal } from '@angular/core';
-import { HttpClient, HttpErrorResponse, HttpHeaders } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import { Observable, throwError } from 'rxjs';
 import { tap } from 'rxjs/operators';
-import { APPLE_LOGIN_URL, AUTH_ME_URL, APPLE_EXCHANGE_URL } from './apple-auth.config';
+import {
+  APPLE_LOGIN_URL,
+  AUTH_ME_URL,
+  APPLE_EXCHANGE_URL,
+  APPLE_PLATFORM_PARAM,
+} from './apple-auth.config';
 import { environment } from '../environments/environment';
 
 /** Datos que la hoja nativa de Apple entrega y la app postea al backend. */
@@ -60,6 +67,18 @@ export interface SessionUser {
   provider: string;
 }
 
+/**
+ * Respuesta de GET /auth/me?token=… (flujo Apple en Android).
+ * Además de la sesión (accessToken/refreshToken/sessionId) puede traer el
+ * perfil, ya sea anidado en `user` o plano en la raíz.
+ */
+export interface TokenSessionResponse extends AuthResponse {
+  id?: string;
+  name?: string;
+  email?: string;
+  provider?: string;
+}
+
 export interface BiometricRegisterResponse {
   biometricToken: string;
   deviceId: string;
@@ -102,12 +121,32 @@ export class AuthService {
   // ── Sign in with Apple (flujo de redirección de servidor / form_post) ──────
 
   /**
-   * Inicia el login con Apple con una NAVEGACIÓN REAL del navegador.
-   * No es fetch/HttpClient: el backend redirige a Apple y, tras el callback,
-   * de vuelta a la ruta de éxito o error de Angular.
+   * Inicia el login con Apple. No es fetch/HttpClient: el backend redirige a
+   * Apple y, tras el callback, de vuelta a la app.
+   *
+   * El query param `platform` le dice al backend a dónde devolver al usuario:
+   *   - `web`     → redirect HTTP a las rutas Angular /auth/apple/success|error.
+   *   - `android` → redirect al deep link APPLE_DEEP_LINK_URL con `token` (o
+   *                 `error`) en el query string, porque la cookie HttpOnly del
+   *                 Custom Tab no llega al WebView de la app.
+   *
+   * En Android se abre un Chrome Custom Tab (Browser de Capacitor) en vez de
+   * navegar el WebView: Apple rechaza el login dentro de webviews embebidos.
    */
-  loginWithApple(): void {
-    window.location.href = APPLE_LOGIN_URL;
+  async loginWithApple(): Promise<void> {
+    const url = `${APPLE_LOGIN_URL}?${APPLE_PLATFORM_PARAM}=${this.platform()}`;
+
+    if (Capacitor.getPlatform() === 'android') {
+      await Browser.open({ url, presentationStyle: 'fullscreen' });
+      return;
+    }
+
+    window.location.href = url;
+  }
+
+  /** Plataforma que se envía al backend en el login con Apple. */
+  private platform(): 'web' | 'android' {
+    return Capacitor.getPlatform() === 'android' ? 'android' : 'web';
   }
 
   /**
@@ -118,6 +157,37 @@ export class AuthService {
     return this.http
       .get<SessionUser>(AUTH_ME_URL, { withCredentials: true })
       .pipe(tap(user => this.currentUser.set(user)));
+  }
+
+  /**
+   * Resuelve la sesión a partir del `token` que llega por el deep link (Android).
+   * En nativo no hay cookie HttpOnly que enviar, así que el token viaja como
+   * query param y el backend responde con la sesión completa
+   * (accessToken, refreshToken, sessionId y perfil), que se guarda igual que en
+   * el resto de los logins.
+   */
+  meWithToken(token: string): Observable<TokenSessionResponse> {
+    return this.http
+      .get<TokenSessionResponse>(AUTH_ME_URL, { params: new HttpParams().set('token', token) })
+      .pipe(
+        tap(res => {
+          if (!res?.accessToken) {
+            throw new Error('El backend no devolvió el accessToken de la sesión.');
+          }
+
+          this.saveSession(res);
+
+          // El perfil puede venir plano en la raíz en vez de dentro de `user`.
+          if (!res.user && (res.email || res.name)) {
+            this.currentUser.set({
+              id: res.id ?? '',
+              name: res.name ?? '',
+              email: res.email ?? '',
+              provider: res.provider ?? 'apple',
+            });
+          }
+        }),
+      );
   }
 
   /**

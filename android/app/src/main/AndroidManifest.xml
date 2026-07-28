@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Deep link del callback de Apple en Android:
+                 com.drkapps.pruebabiometria://apple-callback?token=… -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="com.drkapps.pruebabiometria" android:host="apple-callback" />
+            </intent-filter>
+
         </activity>
 
         <provider

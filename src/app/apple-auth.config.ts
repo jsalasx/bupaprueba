@@ -36,6 +36,26 @@ export const APPLE_WEB_REDIRECT_URI =
 export const APPLE_LOGIN_URL = `${APPLE_API_BASE}/auth/apple/login`;
 
 /**
+ * Query param que indica al backend desde dónde se inició el login, y por tanto
+ * a dónde redirigir al terminar: `web` → rutas Angular; `android` → deep link.
+ * El nombre debe coincidir EXACTO con el que espera el backend.
+ */
+export const APPLE_PLATFORM_PARAM = 'platform';
+
+/**
+ * Scheme propio de la app (registrado en AndroidManifest.xml y en el
+ * `custom_url_scheme` de strings.xml). Todo deep link entrante empieza por aquí.
+ */
+export const APP_URL_SCHEME = 'com.drkapps.pruebabiometria://';
+
+/**
+ * Deep link al que el backend debe redirigir cuando `platform=android`:
+ *   com.drkapps.pruebabiometria://apple-callback?token=XYZ
+ *   com.drkapps.pruebabiometria://apple-callback?error=ACCESS_DENIED
+ */
+export const APPLE_DEEP_LINK_URL = `${APP_URL_SCHEME}apple-callback`;
+
+/**
  * Endpoint que devuelve la sesión actual leyendo la cookie HttpOnly.
  * OJO: comparte base con los endpoints de Google/biometría, así que el interceptor
  * discrimina por esta URL exacta (no por la base) para aplicarle withCredentials.
