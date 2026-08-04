@@ -18,12 +18,14 @@ import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, REDIRECT_URI } from '../goo
 import { DeepLinkService } from '../deep-link.service';
 import { generateCodeVerifier, generateCodeChallenge, generateState } from '../pkce.util';
 import { AuthAzureService } from '../auth/auth.service';
+import { PasskeyLoginForm } from '../webauthn/passkey-login-form/passkey-login-form';
+import { WebAuthnAuthenticationStore } from '../webauthn/webauthn-authentication.store';
 
 declare const google: any;
 
 @Component({
   selector: 'app-google-login-test',
-  imports: [CommonModule, AppleSignInButton],
+  imports: [CommonModule, AppleSignInButton, PasskeyLoginForm],
   templateUrl: './google-login-test.html',
   styleUrls: ['./google-login-test.css'],
   standalone: true,
@@ -33,6 +35,13 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
 
   public readonly authAzure = inject(AuthAzureService);
   private readonly deepLink = inject(DeepLinkService);
+
+  /**
+   * Login con passkey — método ADICIONAL. Si la plataforma no lo soporta el
+   * formulario no se pinta y quedan disponibles Google, Apple, Microsoft y la
+   * biometría de siempre.
+   */
+  public readonly passkey = inject(WebAuthnAuthenticationStore);
 
   isNative = signal(Capacitor.isNativePlatform());
   isAndroid = signal(Capacitor.getPlatform() === 'android');
@@ -74,6 +83,20 @@ export class GoogleLoginTest implements AfterViewInit, OnDestroy {
     // la config de capacitor.config.ts (scopes + serverClientId).
     if (this.isNative()) {
       GoogleAuth.initialize();
+    }
+
+    // Feature detection antes de mostrar el formulario de passkey.
+    await this.passkey.checkSupport();
+  }
+
+  /**
+   * Login con passkey. Los tokens que devuelve `finish` son equivalentes a los
+   * de Google/Apple/Azure, así que el store ya los guardó con `saveSession` y
+   * aquí solo queda navegar como en el resto de los flujos.
+   */
+  async loginWithPasskey(email: string): Promise<void> {
+    if (await this.passkey.login(email)) {
+      this.router.navigate(['/home']);
     }
   }
 

@@ -1,0 +1,38 @@
+# Despliegue del portal de pruebas en Netlify.
+#
+# Sirve dos propósitos para FIDO2/WebAuthn:
+#  1. Da un dominio HTTPS estable que puede usarse como `rpId`.
+#  2. Publica `/.well-known/assetlinks.json` en la RAÍZ del dominio, que es
+#     donde Android exige encontrarlo (ver docs/frontend-webauthn.md §4).
+#
+# El archivo vive en `public/.well-known/assetlinks.json`; el builder de Angular
+# copia `public/` tal cual a la raíz del bundle.
+
+[build]
+  command = "npm run build"
+  publish = "dist/bupaprueba/browser"
+
+# Digital Asset Links debe servirse como application/json. Netlify lo infiere
+# por la extensión, pero se declara explícito porque si sale como text/plain
+# Play Services descarta el archivo sin decir por qué.
+[[headers]]
+  for = "/.well-known/assetlinks.json"
+  [headers.values]
+    Content-Type = "application/json"
+    Cache-Control = "public, max-age=300"
+
+# Apple Association File: se sirve SIN extensión y necesita el content-type
+# declarado a mano. (Pendiente de publicar — ver §4 del doc.)
+[[headers]]
+  for = "/.well-known/apple-app-site-association"
+  [headers.values]
+    Content-Type = "application/json"
+
+# Fallback de la SPA. Va al final a propósito: en Netlify los archivos que
+# existen tienen precedencia sobre los redirects, así que esta regla NO captura
+# /.well-known/*. Si se invirtiera el orden o se usara `force = true`, Android
+# recibiría el index.html en vez del JSON y la verificación fallaría.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

@@ -13,6 +13,7 @@ dependencies {
     implementation project(':capacitor-app')
     implementation project(':capacitor-browser')
     implementation project(':capgo-capacitor-native-biometric')
+    implementation project(':capgo-capacitor-passkey')
     implementation project(':codetrix-studio-capacitor-google-auth')
 
 }

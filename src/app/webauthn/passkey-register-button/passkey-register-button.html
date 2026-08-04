@@ -1,0 +1,34 @@
+@if (supported()) {
+  <button
+    class="btn btn-passkey"
+    type="button"
+    [disabled]="!enabled()"
+    (click)="register.emit()"
+  >
+    @switch (state()) {
+      @case ('begin') {
+        <span>Preparando…</span>
+      }
+      @case ('ceremony') {
+        <span>Confirma con tu biometría…</span>
+      }
+      @case ('finish') {
+        <span>Registrando dispositivo…</span>
+      }
+      @case ('cooldown') {
+        <span>Espera {{ cooldownSeconds() }}s</span>
+      }
+      @default {
+        <span>🔑 Registrar passkey (FIDO2)</span>
+      }
+    }
+  </button>
+
+  @if (state() === 'success') {
+    <div class="alert alert-success">✅ Passkey registrada en este dispositivo.</div>
+  }
+
+  @if (errorMessage(); as message) {
+    <div class="alert alert-error">❌ {{ message }}</div>
+  }
+}

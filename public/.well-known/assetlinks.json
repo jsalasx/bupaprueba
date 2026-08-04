@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.drkapps.pruebabiometria",
+      "sha256_cert_fingerprints": [
+        "31:1E:93:44:A1:1D:35:D0:5B:1B:BB:0B:EE:84:C1:68:9F:FF:F8:B7:87:E3:5B:B1:6D:D2:68:ED:61:D4:E2:1A"
+      ]
+    }
+  }
+]

@@ -1,20 +1,41 @@
-import { Component, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { NativeBiometric } from '@capgo/capacitor-native-biometric';
 import { firstValueFrom } from 'rxjs';
 import { apiErrorMessage, AuthService } from '../auth.service';
+import { PasskeyRegisterButton } from '../webauthn/passkey-register-button/passkey-register-button';
+import { WebAuthnRegistrationStore } from '../webauthn/webauthn-registration.store';
 
 @Component({
   selector: 'app-biometria',
   templateUrl: './biometria.html',
   styleUrls: ['./biometria.css'],
   standalone: true,
+  imports: [PasskeyRegisterButton],
 })
-export class Biometria {
+export class Biometria implements OnInit {
   loading = signal(false);
   error = signal<string | null>(null);
 
+  /**
+   * Registro de passkey FIDO2 — método ADICIONAL, independiente del token
+   * biométrico de `activateBiometrics()`. Los dos botones conviven: si el
+   * dispositivo no soporta passkeys, el botón ni se pinta y el usuario sigue
+   * teniendo la biometría nativa y el resto de los métodos.
+   */
+  readonly passkey = inject(WebAuthnRegistrationStore);
+
   constructor(private router: Router, private auth: AuthService) {}
+
+  /** Feature detection antes de mostrar cualquier UI de passkeys. */
+  async ngOnInit(): Promise<void> {
+    await this.passkey.checkSupport();
+  }
+
+  /** Botón "Registrar passkey". El store lleva el estado de la ceremonia. */
+  async registerPasskey(): Promise<void> {
+    await this.passkey.register();
+  }
 
   async activateBiometrics(): Promise<void> {
     this.loading.set(true);

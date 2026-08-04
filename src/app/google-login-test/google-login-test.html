@@ -84,6 +84,17 @@
 
   <div class="divider"><span>o</span></div>
 
+  <!-- ── Passkey / FIDO2 (adicional: no reemplaza a ningún otro método) ── -->
+  <app-passkey-login-form
+    [supported]="passkey.state() !== 'unsupported'"
+    [state]="passkey.state()"
+    [errorMessage]="passkey.errorMessage()"
+    [cooldownSeconds]="passkey.cooldownSeconds()"
+    [enabled]="passkey.canLogin() && !loading()"
+    (login)="loginWithPasskey($event)"
+    style="display:block; margin-bottom: 0.75rem;"
+  />
+
   <button
     class="btn-biometric"
     (click)="loginWithBiometrics()"

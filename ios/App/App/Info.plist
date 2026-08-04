@@ -20,14 +20,23 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.drkapps.pruebabiometria</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.537881986178-eugpuu3m6hsh5i94lfmieljjqs4lngvu</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
-	<key>NSFaceIDUsageDescription</key>
-    <string>Usamos biometría para iniciar sesión de forma segura.</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
 	<key>UIRequiredDeviceCapabilities</key>
@@ -49,19 +58,5 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleURLName</key>
-			<string>com.drkapps.pruebabiometria</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<!-- Reemplaza TU_CLIENT_ID_IOS con la parte antes de .apps.googleusercontent.com -->
-				<!-- Ejemplo: si el client ID es 123456789-abc.apps.googleusercontent.com -->
-				<!-- el scheme es: com.googleusercontent.apps.123456789-abc -->
-				<string>com.googleusercontent.apps.537881986178-eugpuu3m6hsh5i94lfmieljjqs4lngvu</string>
-			</array>
-		</dict>
-	</array>
 </dict>
 </plist>

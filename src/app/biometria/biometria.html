@@ -21,6 +21,15 @@
         }
       </button>
 
+      <app-passkey-register-button
+        [supported]="passkey.state() !== 'unsupported'"
+        [state]="passkey.state()"
+        [errorMessage]="passkey.errorMessage()"
+        [cooldownSeconds]="passkey.cooldownSeconds()"
+        [enabled]="passkey.canRegister() && !loading()"
+        (register)="registerPasskey()"
+      />
+
       <button class="btn btn-secondary" (click)="skipToHome()" [disabled]="loading()">
         Ahora no, ir al inicio
       </button>

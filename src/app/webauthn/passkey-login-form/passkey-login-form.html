@@ -1,0 +1,51 @@
+@if (supported()) {
+  <div class="passkey-login">
+    <label class="passkey-label" for="passkey-email">Correo electrónico</label>
+    <input
+      id="passkey-email"
+      class="passkey-input"
+      type="email"
+      autocomplete="username webauthn"
+      placeholder="tu@correo.cl"
+      [value]="email()"
+      [disabled]="!enabled()"
+      (input)="onEmailInput($event)"
+      (keyup.enter)="submit()"
+    />
+
+    <button
+      class="btn-passkey-login"
+      type="button"
+      [disabled]="!enabled() || !isValidEmail()"
+      (click)="submit()"
+    >
+      @switch (state()) {
+        @case ('captcha') {
+          <span>Verificando…</span>
+        }
+        @case ('begin') {
+          <span>Preparando…</span>
+        }
+        @case ('ceremony') {
+          <span>Confirma con tu biometría…</span>
+        }
+        @case ('finish') {
+          <span>Iniciando sesión…</span>
+        }
+        @case ('cooldown') {
+          <span>Espera {{ cooldownSeconds() }}s</span>
+        }
+        @default {
+          <span>{{ ctaLabel() }}</span>
+        }
+      }
+    </button>
+
+    @if (errorMessage(); as message) {
+      <div class="alert alert-error">
+        <span class="alert-icon">❌</span>
+        <div class="alert-content"><strong>{{ message }}</strong></div>
+      </div>
+    }
+  </div>
+}

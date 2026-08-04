@@ -13,8 +13,17 @@ export const environment = {
   production: false,
 
   /** Google, Azure y biometría. */
-  apiBaseUrl: 'https://92fc-2800-bf0-3804-fe9-8c96-2c7a-464e-2445.ngrok-free.app/portal-blua/ms-controller',
+  apiBaseUrl: 'https://api-qa.bupa.cl/portal-blua/ms-controller',
 
   /** Sign in with Apple. */
   appleApiBaseUrl: 'https://api-qa.bupa.cl/portal-blua/ms-controller',
+
+  /**
+   * Site key de reCAPTCHA v3 para el header `X-Forms-Captcha` del login con
+   * passkey. Vacía = se usa `captchaTestToken` (ver CaptchaService).
+   */
+  recaptchaSiteKey: '',
+
+  /** Token de relleno mientras no hay reCAPTCHA. Solo pruebas locales. */
+  captchaTestToken: 'test-captcha-token',
 };
