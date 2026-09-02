@@ -1,0 +1,164 @@
+<div class="medicos">
+  <header class="head">
+    <div>
+      <span class="badge">Equipo médico</span>
+      <h2>Requerimientos</h2>
+    </div>
+    <button class="btn-ghost" (click)="logout()">Cerrar sesión</button>
+  </header>
+
+  <nav class="tabs">
+    <button [class.active]="tab() === 'cola'" (click)="switchTab('cola')">Cola</button>
+    <button [class.active]="tab() === 'mios'" (click)="switchTab('mios')">Míos</button>
+    <button [class.active]="tab() === 'panel'" (click)="switchTab('panel')">Panel</button>
+    <span class="spacer"></span>
+    <button class="btn-link" (click)="refresh()" [disabled]="loading()">
+      {{ loading() ? 'Cargando…' : '↻ Actualizar' }}
+    </button>
+  </nav>
+
+  @if (error()) {
+    <div class="alert error">{{ error() }}</div>
+  }
+
+  <!-- ── Cola compartida ── -->
+  @if (tab() === 'cola') {
+    <p class="hint">Requerimientos abiertos que nadie está atendiendo todavía.</p>
+
+    @if (!loading() && queue().length === 0) {
+      <p class="empty">La cola está vacía.</p>
+    }
+
+    <ul class="list">
+      @for (t of queue(); track t.id) {
+        <li class="item">
+          <div class="item-main">
+            <span class="subject">{{ t.subject }}</span>
+            <span class="meta">
+              {{ t.patientName || t.patientId }} · {{ t.createdAt | date: 'short' }}
+              @if (t.consultationType) { · {{ t.consultationType }} }
+            </span>
+          </div>
+          <button class="btn-primary" (click)="claim(t.id)" [disabled]="claiming() === t.id">
+            {{ claiming() === t.id ? 'Tomando…' : 'Tomar' }}
+          </button>
+        </li>
+      }
+    </ul>
+  }
+
+  <!-- ── Los que atiende este médico ── -->
+  @if (tab() === 'mios') {
+    <p class="hint">Requerimientos en los que participas. Aquí es donde conversas.</p>
+
+    @if (!loading() && mine().length === 0) {
+      <p class="empty">No estás atendiendo ningún requerimiento.</p>
+    }
+
+    <ul class="list">
+      @for (t of mine(); track t.id) {
+        <li class="item">
+          <div class="item-main" (click)="openChat(t.id)">
+            <span class="subject">
+              {{ t.subject }}
+              @if (t.hasUnread) { <span class="dot" title="Mensajes nuevos"></span> }
+            </span>
+            <span class="meta">
+              {{ t.patientName || t.patientId }} ·
+              <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
+              <!--
+                awaitingReply lo calcula el backend con el autor del último mensaje. Es
+                lo que permite priorizar: el punto de "no leído" dice que llegó algo,
+                esto dice que sigue esperando una respuesta.
+              -->
+              @if (t.awaitingReply) { · <span class="tag-wait">Sin responder</span> }
+            </span>
+          </div>
+          <div class="actions">
+            <button class="btn-ghost" (click)="openChat(t.id)">Abrir chat</button>
+            @if (t.status === 'IN_PROGRESS') {
+              <button class="btn-ghost danger" (click)="release(t.id)">Devolver</button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+
+  <!-- ── Panel: todo el equipo, con filtros ── -->
+  @if (tab() === 'panel') {
+    <div class="filters">
+      <div class="field">
+        <label for="f-status">Estado</label>
+        <select id="f-status" [ngModel]="fStatus()" (ngModelChange)="fStatus.set($event)">
+          <option value="">Todos</option>
+          <option value="OPEN">Abierto</option>
+          <option value="IN_PROGRESS">Asignado</option>
+          <option value="CLOSED">Cerrado</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="f-assignee">Médico</label>
+        <input
+          id="f-assignee"
+          type="text"
+          placeholder="correo@bupa.cl"
+          [ngModel]="fAssignee()"
+          (ngModelChange)="fAssignee.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="f-from">Desde</label>
+        <input id="f-from" type="date" [ngModel]="fFrom()" (ngModelChange)="fFrom.set($event)" />
+      </div>
+
+      <div class="field">
+        <label for="f-to">Hasta</label>
+        <input id="f-to" type="date" [ngModel]="fTo()" (ngModelChange)="fTo.set($event)" />
+      </div>
+
+      <div class="field actions-field">
+        <button class="btn-primary" (click)="search()" [disabled]="loading()">Buscar</button>
+        <button class="btn-link" (click)="clearFilters()">Limpiar</button>
+      </div>
+    </div>
+
+    <p class="hint">
+      Alcanza los requerimientos de todo el equipo. Para conversar en uno ajeno hay que tomarlo.
+    </p>
+
+    @if (!loading() && panel().length === 0) {
+      <p class="empty">Ningún requerimiento coincide con los filtros.</p>
+    }
+
+    <ul class="list">
+      @for (p of panel(); track p.id) {
+        <li class="item">
+          <div class="item-main">
+            <span class="subject">{{ p.subject }}</span>
+            <span class="meta">
+              {{ p.patientName || p.patientId }} ·
+              {{ p.createdAt | date: 'short' }}
+              @if (p.consultationType) { · {{ p.consultationType }} }
+              @if (p.assigneeId) { · Atiende {{ p.assigneeName || p.assigneeId }} }
+              @if (p.releasedAt) { · Devuelto por {{ p.releasedBy }} }
+              @if (p.awaitingReply) { · <span class="tag-wait">Sin responder</span> }
+            </span>
+          </div>
+          <div class="actions">
+            <span class="status status-{{ p.status }}">{{ statusLabel[p.status] }}</span>
+            @if (p.status === 'OPEN') {
+              <button class="btn-primary" (click)="claim(p.id)" [disabled]="claiming() === p.id">
+                {{ claiming() === p.id ? 'Tomando…' : 'Tomar' }}
+              </button>
+            }
+            @if (p.status === 'IN_PROGRESS') {
+              <button class="btn-ghost danger" (click)="release(p.id)">Devolver</button>
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  }
+</div>

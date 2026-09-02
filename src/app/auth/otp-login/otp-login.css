@@ -1,0 +1,88 @@
+.otp {
+  border: 1px solid #d9dee5;
+  border-radius: 12px;
+  padding: 1rem;
+  margin-top: 0.75rem;
+  background: #fff;
+}
+
+.otp-head {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  margin-bottom: 0.85rem;
+}
+
+.otp-icon { font-size: 1.35rem; line-height: 1; }
+
+.otp-head strong { display: block; font-size: 0.95rem; }
+.otp-head small { color: #667085; font-size: 0.8rem; }
+
+.otp-label {
+  display: block;
+  font-size: 0.8rem;
+  color: #475467;
+  margin-bottom: 0.3rem;
+}
+
+.otp-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cfd6de;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}
+
+.otp-input:focus {
+  outline: none;
+  border-color: #0b7285;
+  box-shadow: 0 0 0 3px rgba(11, 114, 133, 0.12);
+}
+
+/* El código se lee de un vistazo: monoespaciado y separado. */
+.otp-code {
+  letter-spacing: 0.35em;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 1.15rem;
+}
+
+.otp-btn {
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.7rem;
+  border: 0;
+  border-radius: 8px;
+  background: #0b7285;
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.otp-btn:disabled { opacity: 0.6; cursor: default; }
+
+.otp-link {
+  width: 100%;
+  margin-top: 0.45rem;
+  padding: 0.4rem;
+  border: 0;
+  background: none;
+  color: #0b7285;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.otp-info {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  color: #0b7285;
+}
+
+.otp-error {
+  margin: 0.7rem 0 0;
+  font-size: 0.85rem;
+  color: #b42318;
+}

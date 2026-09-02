@@ -45,6 +45,9 @@
     <div id="google-btn" [class.hidden]="!googleReady()"></div>
   }
 
+  <!-- ── Ingreso por código al correo (OTP) — pacientes ── -->
+  <app-otp-login></app-otp-login>
+
   <!-- ── Sign in with Apple (nativo en iOS, redirect en web) ── -->
   <app-apple-sign-in-button
     theme="black"
@@ -151,4 +154,9 @@
       <button class="alert-close" (click)="clearError()">✕</button>
     </div>
   }
+
+  <!-- ── Puerta del equipo médico ── -->
+  <div class="medicos-link">
+    <a routerLink="/login/medicos">¿Eres del equipo médico? Ingresa con Bupa</a>
+  </div>
 </div>

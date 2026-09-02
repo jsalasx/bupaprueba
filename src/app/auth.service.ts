@@ -72,12 +72,40 @@ export interface SessionUser {
  * Además de la sesión (accessToken/refreshToken/sessionId) puede traer el
  * perfil, ya sea anidado en `user` o plano en la raíz.
  */
-export interface TokenSessionResponse extends AuthResponse {
+export interface TokenSessionResponse extends Partial<AuthResponse> {
   id?: string;
   name?: string;
   email?: string;
   provider?: string;
 }
+
+/** Respuesta de POST /otp/generate. `sent` en false significa que no se envió el correo. */
+export interface GenerateOtpResponse {
+  deviceId: string;
+  sent: boolean;
+}
+
+/**
+ * Respuesta de POST /otp/validate.
+ *
+ * Es un login completo: además de verificar el dispositivo devuelve la sesión
+ * (accessToken, refreshToken y sessionId), así que no hace falta un segundo paso.
+ */
+export interface ValidateOtpResponse {
+  deviceId: string;
+  verified: boolean;
+  verifiedAt: string;
+  sessionId: string;
+  accessToken: string;
+  refreshToken: string;
+}
+
+/**
+ * Tipo de usuario del chat clínico. Lo asigna el backend según la vía de entrada:
+ * OTP, Google y Apple dan de alta pacientes; la cuenta corporativa de Bupa
+ * (Microsoft) da de alta al equipo médico.
+ */
+export type UserType = 'MEDICO' | 'PACIENTE';
 
 export interface BiometricRegisterResponse {
   biometricToken: string;
@@ -103,6 +131,8 @@ export class AuthService {
   private readonly REFRESH_TOKEN_KEY = 'refresh_token';
   private readonly SESSION_ID_KEY = 'session_id';
   private readonly DEVICE_ID_KEY = 'device_id';
+  private readonly USER_TYPE_KEY = 'user_type';
+  private readonly USER_EMAIL_KEY = 'user_email';
   private readonly BEARER_TOKEN_PUBLIC = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhdWQiOiJwdWJsaWMiLCJleHAiOjE3ODM1MzQ2NzQsImlhdCI6MTc4MzUyNTY3NCwiaXNzIjoicHVibGljIiwianRpIjoiNGY5Y2UyMGEtZWQxMy00YyIsInB1YmxpY0tleSI6IjRmOWNlMjBhLWVkMTMtNGMiLCJyb2xlcyI6IldfcmtoWlA3dG84Mk5mcGlaVExhSGc9PSIsInNpdGUiOiJwdWJsaWMiLCJzdWIiOiIwMDAwMDAwMDAwMDAwMDAwYzZkMTliNTQxMzliNGE1NGUzNzkxMjg4ZmYxNTYzYTEiLCJ1c2VybmFtZSI6IjJENnpjYzcxTnZBT1dvVlVKMkZpVTBTcTR0TT0ifQ.NjhyKDMuwUXz7trjnbIHk33Kv7Vnj9VwdqoufJ2hFq8";
   readonly BIOMETRIC_SERVER = 'com.bupa.app';
   private readonly headers = new HttpHeaders({
@@ -115,6 +145,26 @@ export class AuthService {
 
   /** Usuario de la sesión activa (poblado por me() tras el login con Apple). */
   currentUser = signal<SessionUser | null>(null);
+
+  /**
+   * Tipo de usuario del chat, deducido de la pantalla por la que entró.
+   *
+   * Es una PISTA para enrutar y pintar, no una autorización: quien decide qué puede
+   * hacer cada cual es el backend, que lo lee de la cuenta. Guardarlo aquí solo
+   * evita mandar al médico al home de pacientes tras recargar la página.
+   */
+  userType = signal<UserType | null>(
+    localStorage.getItem('user_type') as UserType | null,
+  );
+
+  /**
+   * Correo de la sesión activa.
+   *
+   * Existe para las PRUEBAS LOCALES: sin Kong delante, el backend no recibe el
+   * header X-User-Id que normalmente inyecta la puerta de enlace, así que el
+   * interceptor lo suple con este valor. Ver BearerTokenInterceptor.
+   */
+  userEmail = signal<string | null>(localStorage.getItem('user_email'));
 
   constructor(private http: HttpClient) {}
 
@@ -151,12 +201,16 @@ export class AuthService {
 
   /**
    * Lee la sesión actual apoyándose en la cookie HttpOnly (withCredentials).
-   * 200 → { id, name, email, provider }; 401 → sin sesión (tratar como no autenticado).
+   * 200 → perfil (id, name, email, provider); 401 → sin sesión (tratar como no autenticado).
+   *
+   * Si la respuesta trae además los tokens de sesión (accessToken/refreshToken/
+   * sessionId), se guardan igual que en el resto de los logins: sin eso, el
+   * logout con Apple en web se quedaba sin `Authorization` y no podía cerrar.
    */
-  me(): Observable<SessionUser> {
+  me(): Observable<TokenSessionResponse> {
     return this.http
-      .get<SessionUser>(AUTH_ME_URL, { withCredentials: true })
-      .pipe(tap(user => this.currentUser.set(user)));
+      .get<TokenSessionResponse>(AUTH_ME_URL, { withCredentials: true })
+      .pipe(tap(res => this.applySession(res)));
   }
 
   /**
@@ -175,17 +229,7 @@ export class AuthService {
             throw new Error('El backend no devolvió el accessToken de la sesión.');
           }
 
-          this.saveSession(res);
-
-          // El perfil puede venir plano en la raíz en vez de dentro de `user`.
-          if (!res.user && (res.email || res.name)) {
-            this.currentUser.set({
-              id: res.id ?? '',
-              name: res.name ?? '',
-              email: res.email ?? '',
-              provider: res.provider ?? 'apple',
-            });
-          }
+          this.applySession(res, 'apple');
         }),
       );
   }
@@ -268,7 +312,68 @@ export class AuthService {
       .pipe(tap(res => this.saveSession(res)));
   }
 
-  saveSession(res: AuthResponse): void {
+  /**
+   * Cierra la sesión en el backend: POST /auth/logout.
+   *
+   * Endpoint de USUARIO, no anónimo: viaja el `accessToken` (JWT de la sesión)
+   * en `Authorization` y el `sessionId` en el header `session-id`. El bearer
+   * público NO sirve aquí, por eso se pone el Authorization explícito (el
+   * interceptor solo rellena el público cuando el header falta).
+   *
+   * El body va vacío (`null`) a propósito: así HttpClient no agrega
+   * `Content-Type`, que sumaría un header más al preflight CORS.
+   */
+  logout(): Observable<void> {
+    const accessToken = this.accessToken();
+
+    // Apple en web sin tokens en el body: la sesión vive solo en la cookie
+    // HttpOnly, así que el logout se hace con withCredentials y sin Authorization
+    // de usuario (el interceptor pondrá el bearer público).
+    if (!accessToken) {
+      if (!this.currentUser()) {
+        return throwError(() => new Error('No hay sesión activa que cerrar.'));
+      }
+
+      return this.http.post<void>(`${this.BASE_URL}/auth/logout`, null, {
+        withCredentials: true,
+      });
+    }
+
+    let headers = new HttpHeaders({ Authorization: `Bearer ${accessToken}` });
+
+    const sessionId = this.sessionId();
+    if (sessionId) {
+      headers = headers.set('session-id', sessionId);
+    }
+
+    return this.http.post<void>(`${this.BASE_URL}/auth/logout`, null, { headers });
+  }
+
+  /**
+   * Persiste lo que venga de una respuesta de sesión: tokens si los hay y perfil
+   * en cualquiera de sus dos formas (anidado en `user` o plano en la raíz).
+   *
+   * Los endpoints /auth/me devuelven una u otra forma según el flujo, por eso
+   * los tokens son opcionales aquí: si no vienen, se conserva la sesión previa
+   * en vez de borrarla.
+   */
+  private applySession(res: TokenSessionResponse, defaultProvider = 'apple'): void {
+    if (res.accessToken) {
+      this.saveSession(res as AuthResponse, defaultProvider);
+    }
+
+    // El perfil puede venir plano en la raíz en vez de dentro de `user`.
+    if (!res.user && (res.email || res.name || res.id)) {
+      this.currentUser.set({
+        id: res.id ?? '',
+        name: res.name ?? '',
+        email: res.email ?? '',
+        provider: res.provider ?? defaultProvider,
+      });
+    }
+  }
+
+  saveSession(res: AuthResponse, provider = 'azure'): void {
     localStorage.setItem(this.ACCESS_TOKEN_KEY, res.accessToken);
     localStorage.setItem(this.REFRESH_TOKEN_KEY, res.refreshToken);
     this.accessToken.set(res.accessToken);
@@ -284,18 +389,87 @@ export class AuthService {
         id: '',
         name: res.user.name,
         email: res.user.email,
-        provider: 'azure',
+        provider,
       });
+      if (res.user.email) {
+        this.setUserEmail(res.user.email);
+      }
     }
+  }
+
+  /**
+   * POST /otp/generate — envía el código al correo indicado.
+   *
+   * El deviceId identifica ESTE navegador y se conserva entre intentos: es el que
+   * el backend asocia al código, así que generar uno nuevo en cada intento haría
+   * que la validación no encontrara nunca el código recién enviado.
+   */
+  generateOtp(email: string): Observable<GenerateOtpResponse> {
+    const normalizado = email.trim().toLowerCase();
+    // Se recuerda aquí y no al validar porque es el único punto del flujo donde el
+    // correo es un dato de entrada; la validación solo recibe el código.
+    this.setUserEmail(normalizado);
+    return this.http.post<GenerateOtpResponse>(`${this.BASE_URL}/otp/generate`, {
+      deviceId: this.getDeviceId(),
+      email: normalizado,
+    });
+  }
+
+  /**
+   * POST /otp/validate — canjea el código por una sesión.
+   *
+   * Guarda la sesión al vuelo: la respuesta ya trae accessToken, refreshToken y
+   * sessionId, así que quien llama no tiene que acordarse de persistirla.
+   */
+  validateOtp(code: string): Observable<ValidateOtpResponse> {
+    return this.http
+      .post<ValidateOtpResponse>(`${this.BASE_URL}/otp/validate`, {
+        deviceId: this.getDeviceId(),
+        code: code.trim(),
+      })
+      .pipe(
+        tap((res) => {
+          this.saveSession(
+            {
+              accessToken: res.accessToken,
+              refreshToken: res.refreshToken,
+              sessionId: res.sessionId,
+            },
+            'otp',
+          );
+          this.setUserType('PACIENTE');
+        }),
+      );
+  }
+
+  /** Recuerda el correo de la sesión (ver userEmail). */
+  setUserEmail(email: string): void {
+    localStorage.setItem(this.USER_EMAIL_KEY, email);
+    this.userEmail.set(email);
+  }
+
+  /** Recuerda por qué puerta entró el usuario, para enrutarlo tras recargar. */
+  setUserType(type: UserType): void {
+    localStorage.setItem(this.USER_TYPE_KEY, type);
+    this.userType.set(type);
+  }
+
+  /** Ruta del home que corresponde a quien está en sesión. */
+  homeRoute(): string {
+    return this.userType() === 'MEDICO' ? '/home/medicos' : '/home';
   }
 
   clearSession(): void {
     localStorage.removeItem(this.ACCESS_TOKEN_KEY);
     localStorage.removeItem(this.REFRESH_TOKEN_KEY);
     localStorage.removeItem(this.SESSION_ID_KEY);
+    localStorage.removeItem(this.USER_TYPE_KEY);
+    localStorage.removeItem(this.USER_EMAIL_KEY);
     this.accessToken.set(null);
     this.sessionId.set(null);
     this.currentUser.set(null);
+    this.userType.set(null);
+    this.userEmail.set(null);
   }
 
   getDeviceId(): string {

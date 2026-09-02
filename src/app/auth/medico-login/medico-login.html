@@ -1,0 +1,29 @@
+<div class="medico-login">
+  <div class="card">
+    <div class="badge">Equipo médico</div>
+    <h2>Ingreso profesional</h2>
+    <p class="sub">Usa tu cuenta corporativa de Bupa para atender requerimientos.</p>
+
+    <button class="btn-bupa" (click)="loginConBupa()" [disabled]="loading()">
+      @if (loading()) {
+        <span>Abriendo sesión…</span>
+      } @else {
+        <svg class="ms-icon" viewBox="0 0 23 23" aria-hidden="true">
+          <rect x="1" y="1" width="10" height="10" fill="#f25022" />
+          <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
+          <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
+          <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
+        </svg>
+        <span>Ingresar con Bupa</span>
+      }
+    </button>
+
+    @if (error() || authAzure.error()) {
+      <p class="error">{{ error() ?? authAzure.error() }}</p>
+    }
+
+    <div class="divider"></div>
+
+    <a class="link" routerLink="/login">¿Eres paciente? Ingresa aquí</a>
+  </div>
+</div>

@@ -215,3 +215,23 @@ hr {
   border-color: #c62828;
   color: #b71c1c;
 }
+
+/* Puerta del equipo médico: visible pero claramente secundaria respecto de los
+   métodos de ingreso de pacientes, que son los de esta pantalla. */
+.medicos-link {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #eaecf0;
+  text-align: center;
+}
+
+.medicos-link a {
+  color: #667085;
+  font-size: 0.83rem;
+  text-decoration: none;
+}
+
+.medicos-link a:hover {
+  color: #0b7285;
+  text-decoration: underline;
+}

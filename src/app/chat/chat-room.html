@@ -1,0 +1,175 @@
+<div class="chat">
+  <header class="head">
+    <button class="btn-back" (click)="back()" aria-label="Volver">←</button>
+    <div class="head-main">
+      @if (ticket(); as t) {
+        <strong class="subject">{{ t.subject }}</strong>
+        <span class="meta">
+          <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
+          · {{ t.patientName || t.patientId }}
+          <!-- El nombre antes que el identificador: el paciente ve esta misma cabecera. -->
+          @if (t.assigneeName || t.assigneeId) { · Atiende {{ t.assigneeName || t.assigneeId }} }
+        </span>
+      } @else {
+        <strong class="subject">Conversación</strong>
+      }
+    </div>
+    @if (canClose()) {
+      <button class="btn-close" (click)="close()" [disabled]="closing()">
+        {{ closing() ? 'Cerrando…' : 'Cerrar' }}
+      </button>
+    }
+  </header>
+
+  @if (error()) {
+    <div class="alert error">{{ error() }}</div>
+  }
+  @if (acs.error()) {
+    <div class="alert error">Proveedor de chat: {{ acs.error() }}</div>
+  }
+  <!--
+    Modo de respaldo: la conversación funciona, pero los mensajes nuevos tardan en
+    aparecer. Sin decirlo, el retraso se leería como "no me han contestado".
+  -->
+  @if (acs.connected() && !acs.live()) {
+    <div class="alert warn">
+      Sin conexión en tiempo real: los mensajes nuevos pueden tardar unos segundos en aparecer.
+    </div>
+  }
+
+  @if (loading()) {
+    <p class="state">Abriendo conversación…</p>
+  }
+
+  <!--
+    ── Ficha del paciente ──
+    Solo llega al equipo médico: el backend omite `patient` en la respuesta que
+    recibe el propio paciente. Ningún campo se omite dentro del objeto, así que se
+    pintan todos y los vacíos salen como guion.
+  -->
+  @if (ticket()?.patient; as p) {
+    <section class="patient">
+      <div class="patient-head">
+        <div>
+          <span class="badge">Paciente</span>
+          <strong class="patient-name">{{ patientFullName() }}</strong>
+        </div>
+        <button class="btn-link" (click)="showPatient.set(!showPatient())">
+          {{ showPatient() ? 'Ocultar ficha' : 'Ver ficha' }}
+        </button>
+      </div>
+
+      @if (showPatient()) {
+        <dl class="patient-grid">
+          <div class="field">
+            <dt>Nombre</dt>
+            <dd>{{ fieldOrDash(p.firstname) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Apellidos</dt>
+            <dd>{{ fieldOrDash(p.lastname) }}</dd>
+          </div>
+          <div class="field">
+            <dt>RUT</dt>
+            <dd>{{ fieldOrDash(p.rut) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Fecha de nacimiento</dt>
+            <dd>{{ fieldOrDash(p.birthdate) }}</dd>
+          </div>
+          <div class="field">
+            <!-- age es null —nunca 0— cuando no se sabe; fieldOrDash lo respeta. -->
+            <dt>Edad</dt>
+            <dd>{{ p.age === null ? '—' : p.age + ' años' }}</dd>
+          </div>
+          <div class="field">
+            <dt>Tipo de consulta</dt>
+            <dd>{{ fieldOrDash(p.consultationType) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Región de domicilio</dt>
+            <dd>{{ fieldOrDash(p.region) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Usuario asignado</dt>
+            <dd>{{ fieldOrDash(p.assigneeName || p.assigneeId) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Último mensaje</dt>
+            <dd>{{ p.lastMessageAt ? (p.lastMessageAt | date: 'short') : '—' }}</dd>
+          </div>
+          <div class="field">
+            <dt>Enviado por</dt>
+            <dd>{{ lastMessageLabel(p.lastMessageBy) }}</dd>
+          </div>
+          <div class="field">
+            <dt>Mensaje sin responder</dt>
+            <dd>
+              @if (p.awaitingReply) {
+                <span class="tag-wait">Sí</span>
+              } @else {
+                No
+              }
+            </dd>
+          </div>
+          <div class="field">
+            <!-- Identificadores con los que asociar esta conversación fuera del chat. -->
+            <dt>ID de usuario</dt>
+            <dd class="mono">{{ fieldOrDash(p.userId) }}</dd>
+          </div>
+        </dl>
+
+        <p class="patient-note">
+          Los datos salen del perfil del paciente y, si no lo completó, de lo que declaró
+          en el registro. Los campos vacíos significan que ese dato no está cargado.
+        </p>
+      }
+    </section>
+  }
+
+  @if (!loading() && ticket() && !ticket()!.threadId) {
+    <p class="state">
+      Este requerimiento todavía no tiene conversación. Un médico debe tomarlo primero.
+    </p>
+  }
+
+  <!-- ── Mensajes ── -->
+  <div class="messages">
+    @if (acs.connected() && acs.messages().length === 0) {
+      <p class="state">Aún no hay mensajes. Escribe el primero.</p>
+    }
+
+    @for (m of acs.messages(); track m.id) {
+      <div class="msg" [class.mine]="m.mine">
+        <div class="bubble">
+          @if (!m.mine) {
+            <span class="sender">{{ m.senderName }}</span>
+          }
+          <span class="text">{{ m.content }}</span>
+          <span class="time">{{ m.createdOn | date: 'shortTime' }}</span>
+        </div>
+      </div>
+    }
+  </div>
+
+  <!-- ── Escritura ── -->
+  @if (ticket()?.status === 'CLOSED') {
+    <div class="composer closed">
+      Esta conversación está cerrada. Para seguir, abre una consulta nueva.
+    </div>
+  } @else {
+    <div class="composer">
+      <input
+        type="text"
+        class="input"
+        placeholder="Escribe un mensaje…"
+        [ngModel]="draft()"
+        (ngModelChange)="draft.set($event)"
+        (keyup.enter)="send()"
+        [disabled]="!canWrite() || acs.sending()" />
+      <button class="btn-send" (click)="send()" [disabled]="!canWrite() || acs.sending()">
+        {{ acs.sending() ? '…' : 'Enviar' }}
+      </button>
+    </div>
+  }
+</div>

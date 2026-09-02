@@ -1,6 +1,7 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AuthAzureService } from '../auth.service';
+import { AuthService } from '../../auth.service';
 
 /**
  * Ruta de callback del login con Microsoft (Azure AD / MSAL), registrada en
@@ -19,7 +20,11 @@ export class AzureSuccess implements OnInit {
   account;
   error;
 
-  constructor(private authAzure: AuthAzureService, private router: Router) {
+  constructor(
+    private authAzure: AuthAzureService,
+    private auth: AuthService,
+    private router: Router,
+  ) {
     this.account = this.authAzure.account;
     this.error = this.authAzure.error;
   }
@@ -28,10 +33,14 @@ export class AzureSuccess implements OnInit {
     await this.authAzure.initialize();
     this.loading.set(false);
 
-    // initialize() ya canjeó el id_token por la sesión de Bupa (POST /auth/azure);
-    // el destino es el mismo que tras un login con Google.
+    // initialize() ya canjeó el id_token por la sesión de Bupa (POST /auth/azure).
+    //
+    // El destino depende de por qué puerta se entró: quien vino de /login/medicos
+    // quedó marcado como MEDICO antes del redirect, y mandarlo a /biometria lo
+    // dejaría en una pantalla que no le corresponde y sin ver su cola de trabajo.
     if (this.authAzure.isAuthenticated()) {
-      setTimeout(() => this.router.navigate(['/biometria']), 1200);
+      const destino = this.auth.userType() === 'MEDICO' ? '/home/medicos' : '/biometria';
+      setTimeout(() => this.router.navigate([destino]), 1200);
     } else {
       console.warn('[MSAL] Callback sin sesión válida; volviendo a /login.');
       setTimeout(() => this.router.navigate(['/login']), 1500);

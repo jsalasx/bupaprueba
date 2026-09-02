@@ -1,0 +1,74 @@
+.medico-login {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: linear-gradient(160deg, #f4f7fa 0%, #e8eef4 100%);
+}
+
+.card {
+  width: 100%;
+  max-width: 380px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 2rem 1.75rem;
+  box-shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+  text-align: center;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  border-radius: 999px;
+  background: #e6f4f1;
+  color: #0b7285;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+h2 { margin: 0.9rem 0 0.35rem; font-size: 1.35rem; color: #101828; }
+
+.sub { margin: 0 0 1.5rem; color: #667085; font-size: 0.9rem; line-height: 1.45; }
+
+.btn-bupa {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  padding: 0.8rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #344054;
+  cursor: pointer;
+}
+
+.btn-bupa:hover:not(:disabled) { background: #f9fafb; }
+.btn-bupa:disabled { opacity: 0.6; cursor: default; }
+
+.ms-icon { width: 18px; height: 18px; }
+
+.error {
+  margin-top: 0.9rem;
+  font-size: 0.85rem;
+  color: #b42318;
+}
+
+.divider {
+  height: 1px;
+  background: #eaecf0;
+  margin: 1.5rem 0 1rem;
+}
+
+.link {
+  color: #0b7285;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.link:hover { text-decoration: underline; }

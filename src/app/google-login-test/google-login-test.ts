@@ -20,12 +20,14 @@ import { generateCodeVerifier, generateCodeChallenge, generateState } from '../p
 import { AuthAzureService } from '../auth/auth.service';
 import { PasskeyLoginForm } from '../webauthn/passkey-login-form/passkey-login-form';
 import { WebAuthnAuthenticationStore } from '../webauthn/webauthn-authentication.store';
+import { OtpLogin } from '../auth/otp-login/otp-login';
+import { RouterLink } from '@angular/router';
 
 declare const google: any;
 
 @Component({
   selector: 'app-google-login-test',
-  imports: [CommonModule, AppleSignInButton, PasskeyLoginForm],
+  imports: [CommonModule, AppleSignInButton, PasskeyLoginForm, OtpLogin, RouterLink],
   templateUrl: './google-login-test.html',
   styleUrls: ['./google-login-test.css'],
   standalone: true,

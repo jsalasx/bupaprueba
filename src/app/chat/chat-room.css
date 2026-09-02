@@ -1,0 +1,246 @@
+.chat {
+  max-width: 720px;
+  margin: 0 auto;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #101828;
+  background: #fff;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid #eaecf0;
+  flex: none;
+}
+
+.btn-back {
+  border: 0;
+  background: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: #475467;
+  padding: 0 0.2rem;
+  line-height: 1;
+}
+
+.head-main { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 0; }
+
+.subject {
+  font-size: 0.98rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta { font-size: 0.75rem; color: #667085; display: flex; align-items: center; gap: 0.3rem; }
+
+.status {
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.status-OPEN { background: #fff4e5; color: #b54708; }
+.status-IN_PROGRESS { background: #e6f4f1; color: #0b7285; }
+.status-CLOSED { background: #f2f4f7; color: #667085; }
+
+.btn-close {
+  padding: 0.4rem 0.8rem;
+  border: 1px solid #fda29b;
+  border-radius: 8px;
+  background: #fff;
+  color: #b42318;
+  font-size: 0.82rem;
+  cursor: pointer;
+  flex: none;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #f9fafb;
+}
+
+.msg { display: flex; }
+.msg.mine { justify-content: flex-end; }
+
+.bubble {
+  max-width: 78%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid #eaecf0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.msg.mine .bubble {
+  background: #0b7285;
+  border-color: #0b7285;
+  color: #fff;
+}
+
+.sender { font-size: 0.72rem; font-weight: 600; color: #0b7285; }
+
+.text { font-size: 0.9rem; line-height: 1.4; word-break: break-word; }
+
+.time { font-size: 0.66rem; opacity: 0.65; align-self: flex-end; }
+
+.composer {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #eaecf0;
+  flex: none;
+}
+
+.composer.closed {
+  justify-content: center;
+  color: #667085;
+  font-size: 0.83rem;
+  padding: 1rem;
+}
+
+.input {
+  flex: 1;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid #cfd6de;
+  border-radius: 20px;
+  font-size: 0.9rem;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #0b7285;
+}
+
+.btn-send {
+  padding: 0.6rem 1.1rem;
+  border: 0;
+  border-radius: 20px;
+  background: #0b7285;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-send:disabled { opacity: 0.5; cursor: default; }
+
+.state {
+  text-align: center;
+  color: #98a2b3;
+  font-size: 0.85rem;
+  padding: 1.5rem 1rem;
+  margin: 0;
+}
+
+.alert {
+  margin: 0.7rem 1rem 0;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+  font-size: 0.83rem;
+  line-height: 1.4;
+}
+
+.alert.error { background: #fef3f2; color: #b42318; }
+
+/* ── Ficha del paciente (solo la ve el equipo médico) ── */
+.patient {
+  margin: 0.75rem 1rem 0;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  background: #fcfcfd;
+}
+
+.patient-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.patient-name { display: block; margin-top: 0.3rem; font-size: 1rem; }
+
+.patient .badge {
+  display: inline-block;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: #e6f4f1;
+  color: #0b7285;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.patient .btn-link {
+  border: 0;
+  background: none;
+  color: #0b7285;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+  white-space: nowrap;
+}
+
+/*
+ * Rejilla que se adapta sola: en el escritorio del médico caben tres o cuatro
+ * columnas y en el móvil baja a una, sin puntos de corte a mano.
+ */
+.patient-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.7rem 1rem;
+  margin: 0.85rem 0 0;
+}
+
+.field dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #98a2b3;
+}
+
+.field dd {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+  color: #101828;
+  word-break: break-word;
+}
+
+.field .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+
+.tag-wait {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+/* Por qué un campo puede estar vacío: evita que se lea como un fallo de carga. */
+.patient-note {
+  margin: 0.8rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: #98a2b3;
+}
+
+/* Aviso de que la conversación va en modo de respaldo, no de que algo falló. */
+.alert.warn { background: #fffaeb; color: #b54708; }

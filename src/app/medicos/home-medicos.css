@@ -1,0 +1,190 @@
+.medicos {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #101828;
+}
+
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.head h2 { margin: 0.4rem 0 0; font-size: 1.4rem; }
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3538cd;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-bottom: 1px solid #eaecf0;
+  margin-bottom: 1rem;
+}
+
+.tabs button {
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  background: none;
+  font-size: 0.88rem;
+  color: #667085;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.tabs button.active {
+  color: #0b7285;
+  font-weight: 600;
+  border-bottom-color: #0b7285;
+}
+
+.tabs .spacer { flex: 1; }
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  background: #f9fafb;
+  border: 1px solid #eaecf0;
+  border-radius: 12px;
+  margin-bottom: 0.85rem;
+}
+
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.field label { font-size: 0.72rem; color: #667085; }
+
+.field input,
+.field select {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #cfd6de;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  min-width: 150px;
+}
+
+.actions-field { flex-direction: row; align-items: flex-end; gap: 0.5rem; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.9rem;
+  padding: 0.8rem 0.25rem;
+  border-top: 1px solid #f2f4f7;
+}
+
+.item-main { display: flex; flex-direction: column; gap: 0.22rem; min-width: 0; flex: 1; cursor: pointer; }
+
+.subject {
+  font-size: 0.93rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.meta { font-size: 0.76rem; color: #667085; }
+
+.actions { display: flex; align-items: center; gap: 0.45rem; flex: none; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f79009;
+  display: inline-block;
+}
+
+.status {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-OPEN { background: #fff4e5; color: #b54708; }
+.status-IN_PROGRESS { background: #e6f4f1; color: #0b7285; }
+.status-CLOSED { background: #f2f4f7; color: #667085; }
+
+.btn-primary {
+  padding: 0.5rem 0.9rem;
+  border: 0;
+  border-radius: 8px;
+  background: #0b7285;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+.btn-ghost {
+  padding: 0.45rem 0.8rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.82rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-ghost.danger { color: #b42318; border-color: #fda29b; }
+
+.btn-link {
+  border: 0;
+  background: none;
+  color: #0b7285;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0.3rem;
+}
+
+.hint { margin: 0 0 0.7rem; color: #667085; font-size: 0.83rem; }
+.empty { color: #98a2b3; font-size: 0.86rem; }
+
+.alert {
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  margin-bottom: 0.9rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.alert.error { background: #fef3f2; color: #b42318; }
+
+/*
+ * Marca los requerimientos cuyo último mensaje es del paciente y sigue sin
+ * respuesta. Es distinto del punto de "no leído": ese dice que llegó algo, este
+ * dice que alguien está esperando.
+ */
+.tag-wait {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 0.7rem;
+  font-weight: 600;
+}

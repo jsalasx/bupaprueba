@@ -1,59 +1,212 @@
-.page {
-  min-height: 100vh;
+.home {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #101828;
+}
+
+.head {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #f5f7fa;
-  padding: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.head h2 { margin: 0.4rem 0 0; font-size: 1.4rem; }
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: #e6f4f1;
+  color: #0b7285;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .card {
   background: #fff;
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.1);
-  padding: 2.5rem 2rem;
-  max-width: 400px;
-  width: 100%;
-  text-align: center;
-}
-
-.icon {
-  font-size: 4rem;
+  border: 1px solid #eaecf0;
+  border-radius: 14px;
+  padding: 1.1rem 1.15rem;
   margin-bottom: 1rem;
 }
 
-h1 {
-  font-size: 1.6rem;
-  font-weight: 700;
-  color: #1a1a2e;
-  margin: 0 0 0.5rem;
+.card h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
 }
 
-.welcome {
-  font-size: 1rem;
-  color: #333;
-  margin-bottom: 0.5rem;
+.card-head h3 { margin: 0; }
+
+.hint { margin: 0 0 0.85rem; color: #667085; font-size: 0.85rem; }
+
+.row { display: flex; gap: 0.55rem; }
+
+.input {
+  flex: 1;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid #cfd6de;
+  border-radius: 8px;
+  font-size: 0.92rem;
 }
 
-.subtitle {
-  color: #777;
+.input:focus {
+  outline: none;
+  border-color: #0b7285;
+  box-shadow: 0 0 0 3px rgba(11, 114, 133, 0.12);
+}
+
+.btn-primary {
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 8px;
+  background: #0b7285;
+  color: #fff;
   font-size: 0.9rem;
-  margin-bottom: 2rem;
-}
-
-.btn-logout {
-  padding: 0.75rem 2rem;
-  border-radius: 10px;
-  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  border: 2px solid #e53935;
-  background: transparent;
-  color: #e53935;
-  transition: background 0.2s, color 0.2s;
+  white-space: nowrap;
 }
 
-.btn-logout:hover {
-  background: #e53935;
-  color: #fff;
+.btn-primary:disabled { opacity: 0.6; cursor: default; }
+
+.btn-ghost {
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
 }
+
+.btn-link {
+  border: 0;
+  background: none;
+  color: #0b7285;
+  font-size: 0.82rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.tickets { list-style: none; margin: 0; padding: 0; }
+
+.ticket {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.25rem;
+  border-top: 1px solid #f2f4f7;
+  cursor: pointer;
+}
+
+.ticket:hover { background: #fafbfc; }
+
+.ticket-main { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
+
+.subject {
+  font-size: 0.93rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta { font-size: 0.76rem; color: #667085; }
+
+.ticket-side { display: flex; align-items: center; gap: 0.5rem; }
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f79009;
+  flex: none;
+}
+
+.status {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.status-OPEN { background: #fff4e5; color: #b54708; }
+.status-IN_PROGRESS { background: #e6f4f1; color: #0b7285; }
+.status-CLOSED { background: #f2f4f7; color: #667085; }
+
+.empty { color: #98a2b3; font-size: 0.86rem; margin: 0.5rem 0; }
+
+.error-text { color: #b42318; font-size: 0.83rem; margin: 0.6rem 0 0; line-height: 1.45; }
+
+.alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.alert.error { background: #fef3f2; color: #b42318; }
+
+/* ── Selector de tipo de consulta ── */
+.select {
+  padding: 0.65rem 0.5rem;
+  border: 1px solid #cfd6de;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.88rem;
+  color: #344054;
+  max-width: 11rem;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #0b7285;
+  box-shadow: 0 0 0 3px rgba(11, 114, 133, 0.12);
+}
+
+/*
+ * Aviso de que la consulta se sumó a una ya abierta. Va en tono informativo y no
+ * de error: el backend hizo exactamente lo que debía, y lo único que falta es que
+ * el paciente entienda por qué no aparece una consulta nueva en la lista.
+ */
+.notice {
+  margin: 0.7rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  background: #eff8ff;
+  color: #175cd3;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+
+.head-actions { display: flex; align-items: center; gap: 0.75rem; }
+
+/* Marca la consulta cuyo último mensaje es del paciente y sigue sin respuesta. */
+.tag-wait {
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* Quién atiende la consulta. Se destaca porque es lo que el paciente busca al mirar. */
+.doctor { color: #0b7285; font-weight: 600; }

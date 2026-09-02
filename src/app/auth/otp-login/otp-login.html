@@ -1,0 +1,56 @@
+<div class="otp">
+  <div class="otp-head">
+    <span class="otp-icon">✉️</span>
+    <div>
+      <strong>Ingresar con código</strong>
+      <small>Te enviamos un código de un solo uso a tu correo.</small>
+    </div>
+  </div>
+
+  @if (phase() === 'email') {
+    <label class="otp-label" for="otp-email">Correo</label>
+    <input
+      id="otp-email"
+      type="email"
+      class="otp-input"
+      placeholder="tucorreo@ejemplo.com"
+      autocomplete="email"
+      [ngModel]="email()"
+      (ngModelChange)="email.set($event)"
+      (keyup.enter)="requestCode()"
+      [disabled]="loading()" />
+
+    <button class="otp-btn" (click)="requestCode()" [disabled]="loading()">
+      {{ loading() ? 'Enviando…' : 'Enviarme el código' }}
+    </button>
+  } @else {
+    <label class="otp-label" for="otp-code">Código</label>
+    <input
+      id="otp-code"
+      type="text"
+      class="otp-input otp-code"
+      placeholder="000000"
+      inputmode="numeric"
+      autocomplete="one-time-code"
+      maxlength="8"
+      [ngModel]="code()"
+      (ngModelChange)="code.set($event)"
+      (keyup.enter)="submitCode()"
+      [disabled]="loading()" />
+
+    <button class="otp-btn" (click)="submitCode()" [disabled]="loading()">
+      {{ loading() ? 'Verificando…' : 'Ingresar' }}
+    </button>
+
+    <button class="otp-link" (click)="editEmail()" [disabled]="loading()">
+      Usar otro correo
+    </button>
+  }
+
+  @if (info()) {
+    <p class="otp-info">{{ info() }}</p>
+  }
+  @if (error()) {
+    <p class="otp-error">{{ error() }}</p>
+  }
+</div>

@@ -1,8 +1,166 @@
-<div class="page">
-  <div class="card">
-    <div class="icon">🏠</div>
-    <h1>Bienvenido a Bupa</h1>
-    <p class="subtitle">Has iniciado sesión correctamente.</p>
-    <button class="btn-logout" (click)="logout()">Cerrar sesión</button>
-  </div>
+<div class="home">
+  <header class="head">
+    <div>
+      <span class="badge">Paciente</span>
+      <h2>Mis consultas</h2>
+    </div>
+    <button class="btn-ghost" (click)="logout()" [disabled]="loading()">
+      {{ loading() ? 'Saliendo…' : 'Cerrar sesión' }}
+    </button>
+  </header>
+
+  @if (error()) {
+    <div class="alert error">
+      <span>{{ error() }}</span>
+      <button class="btn-link" (click)="forceLocalLogout()">Salir igualmente</button>
+    </div>
+  }
+
+  <!-- ── Abrir una consulta nueva ── -->
+  <section class="card">
+    <h3>Nueva consulta</h3>
+    <p class="hint">Cuéntanos brevemente de qué se trata. Un médico la tomará y podrán conversar.</p>
+
+    <div class="row">
+      <input
+        type="text"
+        class="input"
+        placeholder="Ej: Dolor lumbar desde el lunes"
+        [ngModel]="subject()"
+        (ngModelChange)="subject.set($event)"
+        (keyup.enter)="createTicket()"
+        [disabled]="creating()" />
+      <select
+        class="select"
+        [ngModel]="consultationType()"
+        (ngModelChange)="consultationType.set($event)"
+        [disabled]="creating()"
+        aria-label="Tipo de consulta">
+        <option value="">Tipo (opcional)</option>
+        @for (tipo of consultationTypes; track tipo) {
+          <option [value]="tipo">{{ tipo }}</option>
+        }
+      </select>
+      <button class="btn-primary" (click)="createTicket()" [disabled]="creating()">
+        {{ creating() ? 'Creando…' : 'Crear consulta' }}
+      </button>
+    </div>
+
+    @if (createError()) {
+      <p class="error-text">{{ createError() }}</p>
+    }
+    <!--
+      Aviso de agrupación: el backend suma las aperturas seguidas a la consulta que
+      el paciente ya tenía abierta. Sin decirlo, el usuario buscaría en la lista una
+      consulta nueva que nunca se creó.
+    -->
+    @if (reusedNotice()) {
+      <p class="notice">{{ reusedNotice() }}</p>
+    }
+  </section>
+
+  <!-- ── En curso: abiertas y en atención ── -->
+  <section class="card">
+    <div class="card-head">
+      <h3>En curso</h3>
+      <button class="btn-link" (click)="loadActive()" [disabled]="loadingActive()">
+        {{ loadingActive() ? 'Actualizando…' : '↻ Actualizar' }}
+      </button>
+    </div>
+    <p class="hint">
+      Las consultas que están esperando a un médico o que ya están siendo atendidas.
+    </p>
+
+    @if (activeError()) {
+      <p class="error-text">{{ activeError() }}</p>
+    }
+
+    @if (loadingActive() && activeTickets().length === 0) {
+      <p class="empty">Cargando…</p>
+    }
+
+    @if (!loadingActive() && activeTickets().length === 0 && !activeError()) {
+      <p class="empty">No tienes consultas en curso. Abre una arriba cuando lo necesites.</p>
+    }
+
+    <ul class="tickets">
+      @for (t of activeTickets(); track t.id) {
+        <li class="ticket" (click)="openChat(t)">
+          <div class="ticket-main">
+            <span class="subject">{{ t.subject }}</span>
+            <span class="meta">
+              @if (attendedBy(t)) {
+                <span class="doctor">Te atiende {{ attendedBy(t) }}</span> ·
+              }
+              {{ activityHint(t) }}
+              @if (t.consultationType) {
+                · {{ t.consultationType }}
+              }
+              · Última actividad {{ t.lastActivityAt | date: 'short' }}
+            </span>
+          </div>
+          <div class="ticket-side">
+            @if (t.awaitingReply) {
+              <span class="tag-wait" title="Tu último mensaje sigue sin respuesta">Sin responder</span>
+            }
+            @if (t.hasUnread) {
+              <span class="dot" title="Hay mensajes nuevos"></span>
+            }
+            <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
+          </div>
+        </li>
+      }
+    </ul>
+  </section>
+
+  <!-- ── Historial completo ── -->
+  <section class="card">
+    <div class="card-head">
+      <h3>Historial</h3>
+      <div class="head-actions">
+        @if (showHistory()) {
+          <button class="btn-link" (click)="loadTickets()" [disabled]="loadingTickets()">
+            {{ loadingTickets() ? 'Actualizando…' : '↻ Actualizar' }}
+          </button>
+        }
+        <button class="btn-link" (click)="toggleHistory()">
+          {{ showHistory() ? 'Ocultar' : 'Ver todas' }}
+        </button>
+      </div>
+    </div>
+
+    @if (showHistory()) {
+      @if (ticketsError()) {
+        <p class="error-text">{{ ticketsError() }}</p>
+      }
+
+      @if (!loadingTickets() && tickets().length === 0 && !ticketsError()) {
+        <p class="empty">Todavía no has abierto ninguna consulta.</p>
+      }
+
+      <ul class="tickets">
+        @for (t of tickets(); track t.id) {
+          <li class="ticket" (click)="openChat(t)">
+            <div class="ticket-main">
+              <span class="subject">{{ t.subject }}</span>
+              <span class="meta">
+                Creada {{ t.createdAt | date: 'short' }}
+                @if (attendedBy(t)) {
+                  · Atendida por {{ attendedBy(t) }}
+                }
+              </span>
+            </div>
+            <div class="ticket-side">
+              @if (t.hasUnread) {
+                <span class="dot" title="Hay mensajes nuevos"></span>
+              }
+              <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
+            </div>
+          </li>
+        }
+      </ul>
+    } @else {
+      <p class="hint">Incluye también las consultas cerradas.</p>
+    }
+  </section>
 </div>
