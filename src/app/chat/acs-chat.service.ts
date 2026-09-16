@@ -1,7 +1,15 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { ChatClient, ChatThreadClient, ChatMessageReceivedEvent } from '@azure/communication-chat';
 import { AzureCommunicationTokenCredential } from '@azure/communication-common';
-import { ChatService } from './chat.service';
+import { firstValueFrom } from 'rxjs';
+import { ChatAttachmentMetadata, ChatService } from './chat.service';
+import { AuthService } from '../auth.service';
+
+export interface ChatAttachmentView extends ChatAttachmentMetadata {
+  url?: string;
+  loading: boolean;
+  error?: string;
+}
 
 /** Mensaje ya normalizado para pintar. */
 export interface ChatMessage {
@@ -12,6 +20,7 @@ export interface ChatMessage {
   createdOn: Date;
   /** True si lo envió quien está mirando la pantalla. */
   mine: boolean;
+  attachment?: ChatAttachmentView;
 }
 
 /**
@@ -42,6 +51,7 @@ const FALLBACK_POLL_MS = 10_000;
 @Injectable({ providedIn: 'root' })
 export class AcsChatService {
   private readonly chat = inject(ChatService);
+  private readonly auth = inject(AuthService);
 
   private client: ChatClient | null = null;
   private thread: ChatThreadClient | null = null;
@@ -123,16 +133,20 @@ export class AcsChatService {
       await client.startRealtimeNotifications();
 
       this.onMessage = (event: ChatMessageReceivedEvent) => {
-        const senderId = (event.sender as { communicationUserId?: string })?.communicationUserId ?? '';
-        this.byId.set(event.id, {
+        const senderId =
+          (event.sender as { communicationUserId?: string })?.communicationUserId ?? '';
+        const message: ChatMessage = {
           id: event.id,
           content: event.message ?? '',
           senderId,
           senderName: event.senderDisplayName || 'Participante',
           createdOn: event.createdOn ? new Date(event.createdOn) : new Date(),
           mine: senderId === this.identity,
-        });
+          attachment: this.attachmentFrom(event.metadata),
+        };
+        this.byId.set(event.id, message);
         this.publish();
+        void this.loadAttachment(event.id, message.attachment);
       };
 
       this.onConnected = () => {
@@ -211,6 +225,9 @@ export class AcsChatService {
     this.client = null;
     this.thread = null;
     this.byId.clear();
+    for (const message of this.messages()) {
+      if (message.attachment?.url) URL.revokeObjectURL(message.attachment.url);
+    }
     this.messages.set([]);
     this.connected.set(false);
     this.live.set(false);
@@ -235,7 +252,10 @@ export class AcsChatService {
 
     this.sending.set(true);
     try {
-      await this.thread.sendMessage({ content: texto }, { senderDisplayName: 'Yo' });
+      await this.thread.sendMessage(
+        { content: texto },
+        { senderDisplayName: this.senderDisplayName() },
+      );
 
       // Sin notificaciones nadie va a traer el propio mensaje: se relee una vez.
       if (!this.live()) {
@@ -248,6 +268,34 @@ export class AcsChatService {
     } catch (error) {
       console.error('[ACS] No se pudo enviar el mensaje:', error);
       this.error.set(this.describe(error));
+    } finally {
+      this.sending.set(false);
+    }
+  }
+
+  /** Publica en ACS una referencia segura al adjunto ya almacenado en Blob Storage. */
+  async sendAttachment(ticketId: string, attachment: ChatAttachmentMetadata): Promise<void> {
+    if (!this.thread) return;
+
+    this.sending.set(true);
+    try {
+      await this.thread.sendMessage(
+        { content: `Adjunto: ${attachment.filename}` },
+        {
+          senderDisplayName: this.senderDisplayName(),
+          metadata: {
+            attachmentId: attachment.id,
+            attachmentName: attachment.filename,
+            attachmentType: attachment.contentType,
+            attachmentSize: String(attachment.sizeBytes),
+          },
+        },
+      );
+      if (!this.live()) await this.loadHistory();
+      this.chat.reportActivity(ticketId).subscribe({ error: () => undefined });
+    } catch (error) {
+      this.error.set(this.describe(error));
+      throw error;
     } finally {
       this.sending.set(false);
     }
@@ -270,14 +318,17 @@ export class AcsChatService {
         continue;
       }
       const senderId = (raw.sender as { communicationUserId?: string })?.communicationUserId ?? '';
-      this.byId.set(raw.id, {
+      const message: ChatMessage = {
         id: raw.id,
         content: raw.content?.message ?? '',
         senderId,
         senderName: raw.senderDisplayName || 'Participante',
         createdOn: raw.createdOn ? new Date(raw.createdOn) : new Date(),
         mine: senderId === this.identity,
-      });
+        attachment: this.attachmentFrom(raw.metadata),
+      };
+      this.byId.set(raw.id, message);
+      void this.loadAttachment(raw.id, message.attachment);
     }
 
     this.publish();
@@ -290,10 +341,57 @@ export class AcsChatService {
     );
   }
 
+  private attachmentFrom(metadata?: Record<string, string>): ChatAttachmentView | undefined {
+    const id = metadata?.['attachmentId'];
+    const filename = metadata?.['attachmentName'];
+    const contentType = metadata?.['attachmentType'];
+    if (!id || !filename || !contentType) return undefined;
+    return {
+      id,
+      filename,
+      contentType,
+      sizeBytes: Number(metadata?.['attachmentSize'] ?? 0),
+      loading: true,
+    };
+  }
+
+  private async loadAttachment(messageId: string, attachment?: ChatAttachmentView): Promise<void> {
+    if (!attachment || attachment.url || attachment.error) return;
+    try {
+      const blob = await firstValueFrom(this.chat.downloadAttachment(attachment.id));
+      const current = this.byId.get(messageId);
+      if (!current?.attachment || current.attachment.id !== attachment.id) return;
+      current.attachment = {
+        ...current.attachment,
+        url: URL.createObjectURL(blob),
+        loading: false,
+      };
+      this.byId.set(messageId, { ...current });
+    } catch {
+      const current = this.byId.get(messageId);
+      if (!current?.attachment) return;
+      current.attachment = {
+        ...current.attachment,
+        loading: false,
+        error: 'No se pudo abrir el archivo',
+      };
+      this.byId.set(messageId, { ...current });
+    }
+    this.publish();
+  }
+
   private describe(error: unknown): string {
     if (error instanceof Error && error.message) {
       return error.message;
     }
     return 'No fue posible conectar con el servicio de conversación.';
+  }
+
+  private senderDisplayName(): string {
+    return (
+      this.auth.currentUser()?.name?.trim() ||
+      this.auth.userEmail()?.trim() ||
+      (this.auth.userType() === 'MEDICO' ? 'Equipo médico' : 'Paciente')
+    );
   }
 }

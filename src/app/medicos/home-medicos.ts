@@ -191,7 +191,7 @@ export class HomeMedicos implements OnInit {
       );
     }
     if (error instanceof HttpErrorResponse && error.status === 0) {
-      return 'No hay respuesta del backend. ¿Está corriendo en localhost:8080?';
+      return 'No hay respuesta del backend publicado mediante ngrok.';
     }
     return apiErrorMessage(error, 'No fue posible completar la operación.');
   }

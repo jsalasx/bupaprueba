@@ -4,7 +4,11 @@
   height: 100dvh;
   display: flex;
   flex-direction: column;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
   color: #101828;
   background: #fff;
 }
@@ -28,7 +32,13 @@
   line-height: 1;
 }
 
-.head-main { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 0; }
+.head-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
 
 .subject {
   font-size: 0.98rem;
@@ -37,7 +47,13 @@
   white-space: nowrap;
 }
 
-.meta { font-size: 0.75rem; color: #667085; display: flex; align-items: center; gap: 0.3rem; }
+.meta {
+  font-size: 0.75rem;
+  color: #667085;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
 
 .status {
   padding: 0.12rem 0.45rem;
@@ -46,9 +62,18 @@
   font-weight: 600;
 }
 
-.status-OPEN { background: #fff4e5; color: #b54708; }
-.status-IN_PROGRESS { background: #e6f4f1; color: #0b7285; }
-.status-CLOSED { background: #f2f4f7; color: #667085; }
+.status-OPEN {
+  background: #fff4e5;
+  color: #b54708;
+}
+.status-IN_PROGRESS {
+  background: #e6f4f1;
+  color: #0b7285;
+}
+.status-CLOSED {
+  background: #f2f4f7;
+  color: #667085;
+}
 
 .btn-close {
   padding: 0.4rem 0.8rem;
@@ -71,8 +96,12 @@
   background: #f9fafb;
 }
 
-.msg { display: flex; }
-.msg.mine { justify-content: flex-end; }
+.msg {
+  display: flex;
+}
+.msg.mine {
+  justify-content: flex-end;
+}
 
 .bubble {
   max-width: 78%;
@@ -91,11 +120,23 @@
   color: #fff;
 }
 
-.sender { font-size: 0.72rem; font-weight: 600; color: #0b7285; }
+.sender {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #0b7285;
+}
 
-.text { font-size: 0.9rem; line-height: 1.4; word-break: break-word; }
+.text {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  word-break: break-word;
+}
 
-.time { font-size: 0.66rem; opacity: 0.65; align-self: flex-end; }
+.time {
+  font-size: 0.66rem;
+  opacity: 0.65;
+  align-self: flex-end;
+}
 
 .composer {
   display: flex;
@@ -105,11 +146,96 @@
   flex: none;
 }
 
+.file-input {
+  display: none;
+}
+
+.btn-attach,
+.btn-record {
+  width: 2.45rem;
+  height: 2.45rem;
+  flex: none;
+  border: 1px solid #cfd6de;
+  border-radius: 50%;
+  background: #fff;
+  color: #0b7285;
+  font-size: 1.15rem;
+  cursor: pointer;
+}
+
+.btn-record.recording {
+  border-color: #f04438;
+  background: #fef3f2;
+  color: #b42318;
+  animation: pulse-recording 1.2s ease-in-out infinite;
+}
+
+.btn-attach:disabled,
+.btn-record:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.attachment-banner {
+  margin: 0;
+  padding: 0.55rem 1rem;
+  background: #fef3f2;
+  color: #b42318;
+  font-size: 0.78rem;
+}
+
+.attachment {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 100%;
+}
+.attachment-image {
+  display: block;
+  max-width: 18rem;
+  max-height: 16rem;
+  border-radius: 9px;
+  object-fit: contain;
+}
+.attachment-audio {
+  width: min(18rem, 68vw);
+}
+.attachment-file {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.attachment-name,
+.attachment-state {
+  font-size: 0.74rem;
+  opacity: 0.75;
+  overflow-wrap: anywhere;
+}
+.attachment-error {
+  font-size: 0.78rem;
+  color: #b42318;
+}
+
+@keyframes pulse-recording {
+  50% {
+    box-shadow: 0 0 0 5px rgb(240 68 56 / 14%);
+  }
+}
+
 .composer.closed {
-  justify-content: center;
+  /* Dos líneas desde que el pie también resume el cierre. */
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  text-align: center;
   color: #667085;
   font-size: 0.83rem;
   padding: 1rem;
+}
+
+.closure-summary {
+  font-size: 0.78rem;
+  color: #98a2b3;
 }
 
 .input {
@@ -136,7 +262,10 @@
   cursor: pointer;
 }
 
-.btn-send:disabled { opacity: 0.5; cursor: default; }
+.btn-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
 
 .state {
   text-align: center;
@@ -154,7 +283,10 @@
   line-height: 1.4;
 }
 
-.alert.error { background: #fef3f2; color: #b42318; }
+.alert.error {
+  background: #fef3f2;
+  color: #b42318;
+}
 
 /* ── Ficha del paciente (solo la ve el equipo médico) ── */
 .patient {
@@ -172,7 +304,11 @@
   gap: 1rem;
 }
 
-.patient-name { display: block; margin-top: 0.3rem; font-size: 1rem; }
+.patient-name {
+  display: block;
+  margin-top: 0.3rem;
+  font-size: 1rem;
+}
 
 .patient .badge {
   display: inline-block;
@@ -222,7 +358,10 @@
   word-break: break-word;
 }
 
-.field .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.8rem; }
+.field .mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+}
 
 .tag-wait {
   display: inline-block;
@@ -243,4 +382,145 @@
 }
 
 /* Aviso de que la conversación va en modo de respaldo, no de que algo falló. */
-.alert.warn { background: #fffaeb; color: #b54708; }
+.alert.warn {
+  background: #fffaeb;
+  color: #b54708;
+}
+
+/* ── Formulario de cierre (solo el médico responsable) ── */
+.closure {
+  margin: 0.75rem 1rem 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid #fda29b;
+  border-radius: 12px;
+  background: #fffbfa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  flex: none;
+}
+
+.closure-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.closure-hint {
+  font-size: 0.75rem;
+  color: #b42318;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.field-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #344054;
+}
+.field-label em {
+  color: #b42318;
+  font-style: normal;
+}
+
+.closure .select {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cfd6de;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: #fff;
+}
+
+.closure .select:focus {
+  outline: none;
+  border-color: #0b7285;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #344054;
+  cursor: pointer;
+}
+
+.check input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: #0b7285;
+}
+
+/* Los tipos de órdenes: solo aparecen si se marcó que las hubo. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding-left: 1.5rem;
+}
+
+.chip {
+  padding: 0.3rem 0.65rem;
+  border: 1px solid #cfd6de;
+  border-radius: 999px;
+  background: #fff;
+  color: #475467;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.chip.on {
+  border-color: #0b7285;
+  background: #e6f4f1;
+  color: #0b7285;
+  font-weight: 600;
+}
+.chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.closure-error {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #b42318;
+  line-height: 1.4;
+}
+
+.closure-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.closure .btn-link {
+  border: 0;
+  background: none;
+  color: #667085;
+  font-size: 0.83rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-danger {
+  padding: 0.55rem 1rem;
+  border: 0;
+  border-radius: 8px;
+  background: #b42318;
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.btn-close:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

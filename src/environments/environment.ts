@@ -19,10 +19,10 @@ export const environment = {
    * no están desplegados en QA, así que contra api-qa.bupa.cl darían 404. Para
    * volver a QA basta con cambiar esta línea por la de `qaApiBaseUrl`.
    */
-  apiBaseUrl: 'http://localhost:8080/portal-blua/ms-controller',
+  apiBaseUrl: 'https://eloquence-gesture-partly.ngrok-free.dev/portal-blua/ms-controller',
 
   /** Base de QA, conservada para volver sin buscar la URL. */
-  qaApiBaseUrl: 'http://localhost:8080/portal-blua/ms-controller',
+  qaApiBaseUrl: 'https://eloquence-gesture-partly.ngrok-free.dev/portal-blua/ms-controller',
 
   /**
    * Sign in with Apple. Sigue en QA: el flujo de Apple usa un redirect registrado
@@ -38,4 +38,15 @@ export const environment = {
 
   /** Token de relleno mientras no hay reCAPTCHA. Solo pruebas locales. */
   captchaTestToken: 'test-captcha-token',
+
+  /** Valores públicos de Firebase Web; completar con la app Web del proyecto Firebase de QA. */
+  firebase: {
+    apiKey: 'AIzaSyAOmxVNxM0UTJ_3AIBmF1ev2KBed-Z4glc',
+    authDomain: 'bupa-prueba.firebaseapp.com',
+    projectId: 'bupa-prueba',
+    storageBucket: 'bupa-prueba.firebasestorage.app',
+    messagingSenderId: '218578439227',
+    appId: '1:218578439227:web:413a78dacbe8c3ce67e01e',
+    vapidKey: 'BBeu-fnekW4Uqnsdko-it3dLIQuCGpzzdugDBXZsh-np04l_FJXHv91kh7uyLCZ_VGoR5GNkZSmqPLYBSmxoxGI',
+  },
 };

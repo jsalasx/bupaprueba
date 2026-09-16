@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { Observable } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../auth.service';
 
@@ -44,10 +44,45 @@ export interface Ticket {
   awaitingReply: boolean;
   closedAt?: string;
   closedBy?: string;
+  /** Información clínica con la que se cerró. Solo en los CLOSED. */
+  closure?: TicketClosure;
   releasedAt?: string;
   releasedBy?: string;
   callerRole?: string;
 }
+
+/**
+ * Información clínica del cierre (backend 015, AC5).
+ *
+ * Es OBLIGATORIA: POST /chat/tickets/:id/close rechaza con 400 un cuerpo vacío.
+ * Los tres indicadores son booleanos sin opcional a propósito —el backend los
+ * persiste como bool, no como puntero—: "no hubo receta" es una respuesta, no
+ * una ausencia, y mandar `undefined` los deja en `false`, que es otra respuesta
+ * distinta de "no contesté".
+ */
+export interface TicketClosure {
+  /**
+   * Tipo de consulta que determina el MÉDICO al cerrar. Obligatorio, máx. 120
+   * caracteres. No hereda el que declaró el paciente al abrir: aquel es lo que
+   * el paciente creyó necesitar, este es lo que resultó ser.
+   */
+  consultationType: string;
+  prescriptionIssued: boolean;
+  /**
+   * `ordersIssued` y `orderTypes` se validan JUNTOS en el backend: órdenes sin
+   * tipo, o tipos sin órdenes, son 400. Por eso el formulario limpia la lista al
+   * desmarcar la casilla en vez de dejarla escondida.
+   */
+  ordersIssued: boolean;
+  orderTypes?: string[];
+  referralIssued: boolean;
+}
+
+/** Tope de tipos de órdenes que admite un cierre (ChatClosureMaxOrderTypes). */
+export const CLOSURE_MAX_ORDER_TYPES = 20;
+
+/** Longitud máxima de cada texto del cierre (ChatClosureTextMaxLength). */
+export const CLOSURE_TEXT_MAX_LENGTH = 120;
 
 /**
  * Ficha del paciente que acompaña al detalle del requerimiento.
@@ -147,6 +182,23 @@ export interface ChatToken {
   expiresOn: string;
 }
 
+export interface ChatAttachmentGrant {
+  attachmentId: string;
+  filename: string;
+  uploadUrl: string;
+  method: string;
+  headers: Record<string, string>;
+  expiresAt: string;
+  downloadPath: string;
+}
+
+export interface ChatAttachmentMetadata {
+  id: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+}
+
 /** Criterios del panel. Todos opcionales y combinables de forma restrictiva. */
 export interface PanelQuery {
   status?: TicketStatus | '';
@@ -165,6 +217,27 @@ export interface PanelQuery {
  * viaja directo entre el navegador y Azure Communication Services con la credencial
  * de `chatToken()`. Ver AcsChatService.
  */
+/**
+ * Deja los tipos de órdenes como los quiere el backend: sin espacios sobrantes,
+ * sin vacíos y sin repetidos, conservando el orden en que se eligieron.
+ *
+ * La deduplicación importa porque estos valores alimentan recuentos: un
+ * "LABORATORIO" repetido contaría dos veces en cualquier informe posterior.
+ */
+export function normalizeOrderTypes(tipos: string[] | undefined): string[] {
+  const vistos = new Set<string>();
+  const unicos: string[] = [];
+  for (const t of tipos ?? []) {
+    const limpio = t.trim();
+    if (!limpio || vistos.has(limpio)) {
+      continue;
+    }
+    vistos.add(limpio);
+    unicos.push(limpio);
+  }
+  return unicos;
+}
+
 @Injectable({ providedIn: 'root' })
 export class ChatService {
   private readonly http = inject(HttpClient);
@@ -224,7 +297,9 @@ export class ChatService {
     if (tipo) {
       body.consultationType = tipo;
     }
-    return this.http.post<TicketDetail>(`${this.base}/chat/tickets`, body, { headers: this.authHeaders });
+    return this.http.post<TicketDetail>(`${this.base}/chat/tickets`, body, {
+      headers: this.authHeaders,
+    });
   }
 
   /**
@@ -310,21 +385,51 @@ export class ChatService {
 
   /** POST /chat/tickets/:id/claim — el médico se auto-asigna un requerimiento abierto. */
   claimTicket(ticketId: string): Observable<TicketDetail> {
-    return this.http.post<TicketDetail>(`${this.base}/chat/tickets/${ticketId}/claim`, {}, {
-      headers: this.authHeaders,
-    });
+    return this.http.post<TicketDetail>(
+      `${this.base}/chat/tickets/${ticketId}/claim`,
+      {},
+      {
+        headers: this.authHeaders,
+      },
+    );
   }
 
   /** POST /chat/tickets/:id/release — devolver a la cola. Cualquier médico puede. */
   releaseTicket(ticketId: string): Observable<TicketDetail> {
-    return this.http.post<TicketDetail>(`${this.base}/chat/tickets/${ticketId}/release`, {}, {
-      headers: this.authHeaders,
-    });
+    return this.http.post<TicketDetail>(
+      `${this.base}/chat/tickets/${ticketId}/release`,
+      {},
+      {
+        headers: this.authHeaders,
+      },
+    );
   }
 
-  /** POST /chat/tickets/:id/close — cerrar. Solo el responsable, y es terminal. */
-  closeTicket(ticketId: string): Observable<TicketDetail> {
-    return this.http.post<TicketDetail>(`${this.base}/chat/tickets/${ticketId}/close`, {}, {
+  /**
+   * POST /chat/tickets/:id/close — cerrar. Solo el responsable, y es terminal.
+   *
+   * El cuerpo es OBLIGATORIO y viaja ya normalizado: se recortan los espacios y
+   * se descartan los tipos de órdenes vacíos y repetidos. El backend hace lo
+   * mismo antes de guardar, pero normalizar aquí evita que un doble clic en el
+   * formulario acabe siendo un 400 que el usuario no sabe interpretar.
+   *
+   * `orderTypes` se OMITE cuando no hubo órdenes: mandarlo vacío y no mandarlo
+   * significan lo mismo, y una lista con contenido junto a `ordersIssued: false`
+   * es 400.
+   */
+  closeTicket(ticketId: string, closure: TicketClosure): Observable<TicketDetail> {
+    const tipos = normalizeOrderTypes(closure.orderTypes);
+    const body: TicketClosure = {
+      consultationType: closure.consultationType.trim(),
+      prescriptionIssued: closure.prescriptionIssued,
+      ordersIssued: closure.ordersIssued,
+      referralIssued: closure.referralIssued,
+    };
+    if (closure.ordersIssued && tipos.length > 0) {
+      body.orderTypes = tipos;
+    }
+
+    return this.http.post<TicketDetail>(`${this.base}/chat/tickets/${ticketId}/close`, body, {
       headers: this.authHeaders,
     });
   }
@@ -338,9 +443,13 @@ export class ChatService {
 
   /** PUT /chat/tickets/:id/subject — el titular corrige el asunto mientras esté abierto. */
   updateSubject(ticketId: string, subject: string): Observable<TicketDetail> {
-    return this.http.put<TicketDetail>(`${this.base}/chat/tickets/${ticketId}/subject`, { subject }, {
-      headers: this.authHeaders,
-    });
+    return this.http.put<TicketDetail>(
+      `${this.base}/chat/tickets/${ticketId}/subject`,
+      { subject },
+      {
+        headers: this.authHeaders,
+      },
+    );
   }
 
   /**
@@ -351,16 +460,63 @@ export class ChatService {
    * pese a estar vivo.
    */
   reportActivity(ticketId: string): Observable<void> {
-    return this.http.post<void>(`${this.base}/chat/tickets/${ticketId}/activity`, {}, {
-      headers: this.authHeaders,
-    });
+    return this.http.post<void>(
+      `${this.base}/chat/tickets/${ticketId}/activity`,
+      {},
+      {
+        headers: this.authHeaders,
+      },
+    );
   }
 
   /** POST /chat/tickets/:id/read — marca de lectura, base del indicador de no leídos. */
   markRead(ticketId: string): Observable<void> {
-    return this.http.post<void>(`${this.base}/chat/tickets/${ticketId}/read`, {}, {
-      headers: this.authHeaders,
+    return this.http.post<void>(
+      `${this.base}/chat/tickets/${ticketId}/read`,
+      {},
+      {
+        headers: this.authHeaders,
+      },
+    );
+  }
+
+  /** Pide un SAS al backend y sube los bytes directamente a Azure Blob Storage. */
+  async uploadAttachment(ticketId: string, file: File): Promise<ChatAttachmentMetadata> {
+    const contentType = file.type || 'application/octet-stream';
+    const grant = await firstValueFrom(
+      this.http.post<ChatAttachmentGrant>(
+        `${this.base}/chat/attachments`,
+        { ticketId, filename: file.name, contentType, sizeBytes: file.size },
+        { headers: this.authHeaders },
+      ),
+    );
+
+    const response = await fetch(grant.uploadUrl, {
+      method: grant.method || 'PUT',
+      headers: grant.headers,
+      body: file,
     });
+    if (!response.ok) {
+      throw new Error(`Azure Blob Storage rechazó el archivo (${response.status})`);
+    }
+
+    return {
+      id: grant.attachmentId,
+      filename: grant.filename,
+      contentType,
+      sizeBytes: file.size,
+    };
+  }
+
+  /** Descarga autorizada: el backend valida participación y redirige a un SAS breve. */
+  downloadAttachment(attachmentId: string): Observable<Blob> {
+    return this.http.get(
+      `${this.base}/chat/attachments/${encodeURIComponent(attachmentId)}/download`,
+      {
+        headers: this.authHeaders,
+        responseType: 'blob',
+      },
+    );
   }
 
   // ─── Credencial del proveedor ─────────────────────────────────────────────

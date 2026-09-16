@@ -1,6 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { DeepLinkService } from './deep-link.service';
+import { NotificationService } from './notifications/notification.service';
 
 @Component({
   selector: 'app-root',
@@ -10,6 +11,7 @@ import { DeepLinkService } from './deep-link.service';
 })
 export class App implements OnInit {
   private readonly deepLink = inject(DeepLinkService);
+  readonly notifications = inject(NotificationService);
 
   /**
    * El listener de deep links se registra aquí y no en la pantalla de login:
@@ -17,7 +19,10 @@ export class App implements OnInit {
    * cero, y un listener atado a un componente se pierde en esos casos.
    */
   async ngOnInit(): Promise<void> {
-    await this.deepLink.init();
+    await Promise.all([
+      this.deepLink.init(),
+      this.notifications.init(),
+    ]);
   }
 
   reload(): void {

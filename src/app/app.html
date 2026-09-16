@@ -1,5 +1,9 @@
 <button class="reload-btn" (click)="reload()" title="Recargar página">
   &#8635; Recargar
 </button>
+<button class="push-btn" (click)="notifications.enable()" title="Registrar este navegador o dispositivo para push">
+  Activar push · {{ notifications.status() }}
+</button>
+@if (notifications.lastMessage()) { <div class="push-message">{{ notifications.lastMessage() }}</div> }
 
 <router-outlet></router-outlet>
