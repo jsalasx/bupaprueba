@@ -55,6 +55,14 @@
 
 .tabs .spacer { flex: 1; }
 
+.tabs .live {
+  align-self: center;
+  margin-right: 0.5rem;
+  font-size: 0.75rem;
+  color: #868e96;
+}
+.tabs .live.on { color: #2b8a3e; }
+
 .filters {
   display: flex;
   flex-wrap: wrap;

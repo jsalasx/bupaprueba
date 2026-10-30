@@ -1,9 +1,57 @@
-<button class="reload-btn" (click)="reload()" title="Recargar página">
-  &#8635; Recargar
+<button class="reload-btn" (click)="reload()" title="Recargar página">&#8635; Recargar</button>
+<button
+  class="push-btn"
+  (click)="notifications.enable()"
+  title="Registrar este navegador o dispositivo para push"
+>
+  <span class="push-label">Activar push</span>
+  <span class="push-status"> · {{ notifications.status() }}</span>
 </button>
-<button class="push-btn" (click)="notifications.enable()" title="Registrar este navegador o dispositivo para push">
-  Activar push · {{ notifications.status() }}
+<button
+  class="notification-bell"
+  (click)="notifications.toggleHistory()"
+  title="Ver notificaciones"
+  aria-label="Ver notificaciones"
+>
+  🔔
+  @if (notifications.unreadCount()) {
+    <span class="notification-count">{{ notifications.unreadCount() }}</span>
+  }
 </button>
-@if (notifications.lastMessage()) { <div class="push-message">{{ notifications.lastMessage() }}</div> }
+
+@if (notifications.historyOpen()) {
+  <section class="notification-panel">
+    <header>
+      <strong>Notificaciones</strong>
+      <button (click)="notifications.closeHistory()" aria-label="Cerrar">×</button>
+    </header>
+    @if (notifications.history().length === 0) {
+      <p class="notification-empty">Todavía no tienes notificaciones.</p>
+    }
+    @for (item of notifications.history(); track item.id) {
+      <button
+        class="notification-item"
+        [class.read]="item.isRead"
+        (click)="notifications.openHistoryItem(item)"
+      >
+        @if (!item.isRead) {
+          <span class="unread-dot" aria-label="No leída"></span>
+        }
+        <strong>{{ item.title }}</strong>
+        <span>{{ item.body }}</span>
+        <small>{{ item.receivedAt | date: 'short' }}</small>
+      </button>
+    }
+  </section>
+}
+
+@if (notifications.lastMessage()) {
+  <div class="push-message" role="status" (click)="notifications.openLatest()">
+    <span>{{ notifications.lastMessage() }}</span>
+    <button (click)="$event.stopPropagation(); notifications.closeToast()" aria-label="Cerrar">
+      ×
+    </button>
+  </div>
+}
 
 <router-outlet></router-outlet>

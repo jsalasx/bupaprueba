@@ -1,10 +1,13 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage, AuthService } from '../auth.service';
+import { NotificationService } from '../notifications/notification.service';
+import { QueueStreamService } from './queue-stream.service';
 import {
   ChatService,
   PanelItem,
@@ -34,6 +37,9 @@ import {
 export class HomeMedicos implements OnInit {
   private readonly chat = inject(ChatService);
   private readonly router = inject(Router);
+  private readonly notifications = inject(NotificationService);
+  readonly queueStream = inject(QueueStreamService);
+  private readonly destroyRef = inject(DestroyRef);
   readonly auth = inject(AuthService);
 
   readonly statusLabel = TICKET_STATUS_LABEL;
@@ -56,6 +62,19 @@ export class HomeMedicos implements OnInit {
   readonly fTo = signal('');
 
   ngOnInit(): void {
+    this.notifications.queueEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
+      if (event === 'open') this.tab.set('cola');
+      if (this.tab() === 'cola') void this.refresh();
+    });
+    // Stream SSE: mantiene la cola al día aunque el médico no haya habilitado push.
+    // El primer `ready` no recarga porque coincide con la carga inicial de abajo.
+    this.queueStream
+      .events()
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((event) => {
+        if (event.type === 'ready' && !event.reconnected) return;
+        if (this.tab() === 'cola') void this.refresh();
+      });
     void this.refresh();
   }
 

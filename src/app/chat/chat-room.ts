@@ -1,11 +1,14 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, Subscription } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage, AuthService } from '../auth.service';
 import { AcsChatService } from './acs-chat.service';
+import { ChatPresenceService } from './chat-presence.service';
+import { TicketStreamService } from './ticket-stream.service';
 import {
   ChatService,
   CLOSURE_MAX_ORDER_TYPES,
@@ -44,6 +47,8 @@ export class ChatRoom implements OnInit, OnDestroy {
   private readonly router = inject(Router);
   private readonly chat = inject(ChatService);
   readonly acs = inject(AcsChatService);
+  private readonly presence = inject(ChatPresenceService);
+  private readonly ticketStream = inject(TicketStreamService);
   readonly auth = inject(AuthService);
 
   readonly statusLabel = TICKET_STATUS_LABEL;
@@ -108,6 +113,7 @@ export class ChatRoom implements OnInit, OnDestroy {
   ];
 
   private ticketId = '';
+  private streamSub: Subscription | null = null;
   private mediaRecorder: MediaRecorder | null = null;
   private recordingStream: MediaStream | null = null;
   private recordingChunks: Blob[] = [];
@@ -132,6 +138,16 @@ export class ChatRoom implements OnInit, OnDestroy {
       // La marca de lectura se avanza al abrir, no al recibir: es el momento en que
       // el usuario realmente vio los mensajes.
       this.chat.markRead(this.ticketId).subscribe({ error: () => undefined });
+
+      // Mientras la pantalla esté abierta y visible, el backend no manda push por
+      // los mensajes de este requerimiento.
+      this.presence.start(this.ticketId);
+
+      // Aviso en vivo del cierre: sin él, el paciente seguiría pudiendo escribir en
+      // un requerimiento que el médico ya cerró hasta recargar la pantalla.
+      if (detalle.status !== 'CLOSED') {
+        this.watchTicket();
+      }
     } catch (error) {
       this.error.set(this.describe(error));
     } finally {
@@ -149,6 +165,8 @@ export class ChatRoom implements OnInit, OnDestroy {
    */
   ngOnDestroy(): void {
     this.stopRecordingTracks();
+    this.presence.stop();
+    this.streamSub?.unsubscribe();
     void this.acs.disconnect();
   }
 
@@ -189,6 +207,33 @@ export class ChatRoom implements OnInit, OnDestroy {
     return '—';
   }
 
+  /**
+   * Escucha el stream del requerimiento. Al cerrarse —o al reconectar, por si se
+   * cerró mientras estaba caído— recarga el detalle: con status CLOSED, canWrite()
+   * deshabilita el composer.
+   */
+  private watchTicket(): void {
+    this.streamSub = this.ticketStream.events(this.ticketId).subscribe((event) => {
+      if (event.type === 'closed' || event.reconnected) {
+        void this.reloadTicket();
+      }
+    });
+  }
+
+  private async reloadTicket(): Promise<void> {
+    try {
+      const detalle = await firstValueFrom(this.chat.getTicket(this.ticketId));
+      this.ticket.set(detalle);
+      if (detalle.status === 'CLOSED') {
+        this.streamSub?.unsubscribe();
+        this.streamSub = null;
+        this.draft.set('');
+      }
+    } catch {
+      // Si la recarga falla, el próximo aviso o la reconexión lo intentan de nuevo.
+    }
+  }
+
   /** ¿Puede escribir quien mira? Un requerimiento cerrado queda de solo lectura. */
   canWrite(): boolean {
     const t = this.ticket();
@@ -224,6 +269,14 @@ export class ChatRoom implements OnInit, OnDestroy {
     }
     this.attachmentError.set(null);
     try {
+      if (Capacitor.getPlatform() === 'android') {
+        const permission = await MicrophonePermission.request();
+        if (!permission.granted) {
+          throw new Error(
+            'Permiso de micrófono denegado. Actívalo en Ajustes > Aplicaciones > bupaprueba > Permisos > Micrófono.',
+          );
+        }
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const preferred = [
         'audio/webm;codecs=opus',
@@ -432,3 +485,9 @@ export class ChatRoom implements OnInit, OnDestroy {
     return apiErrorMessage(error, 'No fue posible abrir la conversación.');
   }
 }
+
+interface MicrophonePermissionPlugin {
+  request(): Promise<{ granted: boolean }>;
+}
+
+const MicrophonePermission = registerPlugin<MicrophonePermissionPlugin>('MicrophonePermission');

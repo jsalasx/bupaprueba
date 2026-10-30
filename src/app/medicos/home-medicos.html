@@ -12,6 +12,9 @@
     <button [class.active]="tab() === 'mios'" (click)="switchTab('mios')">Míos</button>
     <button [class.active]="tab() === 'panel'" (click)="switchTab('panel')">Panel</button>
     <span class="spacer"></span>
+    <span class="live" [class.on]="queueStream.connected()">
+      {{ queueStream.connected() ? '● En vivo' : '○ Sin conexión en vivo' }}
+    </span>
     <button class="btn-link" (click)="refresh()" [disabled]="loading()">
       {{ loading() ? 'Cargando…' : '↻ Actualizar' }}
     </button>

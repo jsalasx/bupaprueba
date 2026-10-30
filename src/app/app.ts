@@ -1,3 +1,4 @@
+import { DatePipe } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
 import { DeepLinkService } from './deep-link.service';
@@ -5,9 +6,9 @@ import { NotificationService } from './notifications/notification.service';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet],
+  imports: [RouterOutlet, DatePipe],
   templateUrl: './app.html',
-  styleUrl: './app.css'
+  styleUrl: './app.css',
 })
 export class App implements OnInit {
   private readonly deepLink = inject(DeepLinkService);
@@ -19,10 +20,7 @@ export class App implements OnInit {
    * cero, y un listener atado a un componente se pierde en esos casos.
    */
   async ngOnInit(): Promise<void> {
-    await Promise.all([
-      this.deepLink.init(),
-      this.notifications.init(),
-    ]);
+    await Promise.all([this.deepLink.init(), this.notifications.init()]);
   }
 
   reload(): void {

@@ -18,16 +18,22 @@ firebase.messaging().onBackgroundMessage((payload) => {
   self.registration.showNotification(title, {
     body,
     tag: data.notificationId || `chat-${data.ticketId || 'message'}`,
-    data: { destination: data.destination || (data.ticketId ? `/chat/${data.ticketId}` : '/') },
+    data: {
+      destination: data.destination || (data.ticketId ? `/chat/${data.ticketId}` : '/'),
+      notificationId: data.notificationId,
+    },
   });
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const destination = event.notification.data?.destination || '/';
+  const notificationId = event.notification.data?.notificationId;
   event.waitUntil(
     (async () => {
-      const url = new URL(destination, self.location.origin).href;
+      const target = new URL(destination, self.location.origin);
+      if (notificationId) target.searchParams.set('notificationId', notificationId);
+      const url = target.href;
       const windows = await clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (const client of windows) {
         if ('navigate' in client) await client.navigate(url);
