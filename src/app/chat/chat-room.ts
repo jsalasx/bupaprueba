@@ -1,8 +1,8 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, input, output, signal } from '@angular/core';
 import { Capacitor, registerPlugin } from '@capacitor/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { firstValueFrom, Subscription } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage, AuthService } from '../auth.service';
@@ -10,6 +10,7 @@ import { AcsChatService } from './acs-chat.service';
 import { ChatPresenceService } from './chat-presence.service';
 import { TicketStreamService } from './ticket-stream.service';
 import {
+  ChatAttachmentMetadata,
   ChatService,
   CLOSURE_MAX_ORDER_TYPES,
   CLOSURE_TEXT_MAX_LENGTH,
@@ -37,8 +38,9 @@ import {
  */
 @Component({
   selector: 'app-chat-room',
+  providers: [AcsChatService, ChatPresenceService],
   standalone: true,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, DecimalPipe],
   templateUrl: './chat-room.html',
   styleUrls: ['./chat-room.css'],
 })
@@ -52,11 +54,18 @@ export class ChatRoom implements OnInit, OnDestroy {
   readonly auth = inject(AuthService);
 
   readonly statusLabel = TICKET_STATUS_LABEL;
+  readonly embeddedTicketId = input<string>();
+  readonly closeEmbedded = output<void>();
+  private destroyed = false;
 
   readonly ticket = signal<TicketDetail | null>(null);
   readonly loading = signal(true);
   readonly error = signal<string | null>(null);
   readonly draft = signal('');
+  readonly otherChatUnread = signal(false);
+  readonly deliveredIds = signal<ReadonlySet<string>>(new Set());
+  readonly pendingFiles = signal<File[]>([]);
+  private readonly uploadedFiles = new Map<File, ChatAttachmentMetadata>();
   readonly uploading = signal(false);
   readonly recording = signal(false);
   readonly attachmentError = signal<string | null>(null);
@@ -114,30 +123,45 @@ export class ChatRoom implements OnInit, OnDestroy {
 
   private ticketId = '';
   private streamSub: Subscription | null = null;
+  private inboxSub?: Subscription;
   private mediaRecorder: MediaRecorder | null = null;
   private recordingStream: MediaStream | null = null;
   private recordingChunks: Blob[] = [];
 
   async ngOnInit(): Promise<void> {
-    this.ticketId = this.route.snapshot.paramMap.get('ticketId') ?? '';
+    this.ticketId = this.embeddedTicketId() ?? this.route.snapshot.paramMap.get('ticketId') ?? '';
     if (!this.ticketId) {
       await this.router.navigate(['/home']);
       return;
     }
 
+    this.inboxSub = this.chat.inboxChanges.subscribe(({ ticketId, threadId }) => {
+      if ((ticketId && ticketId !== this.ticketId) || (threadId && threadId !== this.ticket()?.threadId)) {
+        this.otherChatUnread.set(true);
+      }
+    });
+
     try {
       const detalle = await firstValueFrom(this.chat.getTicket(this.ticketId));
+      if (this.destroyed) return;
       this.ticket.set(detalle);
 
       // El hilo solo llega a quien participa. Sin él no hay conversación que abrir,
       // y es un caso legítimo: un requerimiento que todavía no se ha tomado.
       if (detalle.threadId) {
         await this.acs.connect(detalle.threadId);
+        if (this.destroyed) {
+          await this.acs.disconnect();
+          return;
+        }
       }
 
       // La marca de lectura se avanza al abrir, no al recibir: es el momento en que
       // el usuario realmente vio los mensajes.
-      this.chat.markRead(this.ticketId).subscribe({ error: () => undefined });
+      this.chat.markRead(this.ticketId).subscribe({
+        next: () => this.chat.inboxChanges.next({ ticketId: this.ticketId }),
+        error: () => undefined,
+      });
 
       // Mientras la pantalla esté abierta y visible, el backend no manda push por
       // los mensajes de este requerimiento.
@@ -145,6 +169,7 @@ export class ChatRoom implements OnInit, OnDestroy {
 
       // Aviso en vivo del cierre: sin él, el paciente seguiría pudiendo escribir en
       // un requerimiento que el médico ya cerró hasta recargar la pantalla.
+      void this.loadDeliveries();
       if (detalle.status !== 'CLOSED') {
         this.watchTicket();
       }
@@ -164,9 +189,11 @@ export class ChatRoom implements OnInit, OnDestroy {
    * importa, retirar los listeners, ocurre antes del primer await.
    */
   ngOnDestroy(): void {
+    this.destroyed = true;
     this.stopRecordingTracks();
     this.presence.stop();
     this.streamSub?.unsubscribe();
+    this.inboxSub?.unsubscribe();
     void this.acs.disconnect();
   }
 
@@ -214,10 +241,20 @@ export class ChatRoom implements OnInit, OnDestroy {
    */
   private watchTicket(): void {
     this.streamSub = this.ticketStream.events(this.ticketId).subscribe((event) => {
-      if (event.type === 'closed' || event.reconnected) {
+      if (event.type === 'delivered' || event.type === 'ready') void this.loadDeliveries();
+      if (event.type === 'closed' || (event.type === 'ready' && event.reconnected)) {
         void this.reloadTicket();
       }
     });
+  }
+
+  private async loadDeliveries(): Promise<void> {
+    try {
+      const { messageIds } = await firstValueFrom(this.chat.listDeliveries(this.ticketId));
+      if (!this.destroyed) this.deliveredIds.update((ids) => new Set([...ids, ...messageIds]));
+    } catch {
+      // El siguiente evento o la reconexión vuelve a consultar los estados guardados.
+    }
   }
 
   private async reloadTicket(): Promise<void> {
@@ -228,6 +265,7 @@ export class ChatRoom implements OnInit, OnDestroy {
         this.streamSub?.unsubscribe();
         this.streamSub = null;
         this.draft.set('');
+        this.clearAttachment();
       }
     } catch {
       // Si la recarga falla, el próximo aviso o la reconexión lo intentan de nuevo.
@@ -247,19 +285,59 @@ export class ChatRoom implements OnInit, OnDestroy {
   }
 
   async send(): Promise<void> {
+    if (!this.canWrite() || this.acs.sending() || this.uploading() || this.recording()) return;
     const texto = this.draft().trim();
-    if (!texto) {
+    const files = this.pendingFiles();
+    if (files.length) {
+      if (await this.sendFiles(files, texto)) {
+        this.draft.set('');
+        this.clearAttachment();
+      }
       return;
     }
-    this.draft.set('');
-    await this.acs.send(this.ticketId, texto);
+    if (!texto) return;
+    if (await this.acs.send(this.ticketId, texto)) this.draft.set('');
   }
 
-  async onFileSelected(event: Event): Promise<void> {
+  onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
+    const files = Array.from(input.files ?? []);
     input.value = '';
-    if (file) await this.sendFile(file);
+    if (!files.length || !this.canWrite() || this.uploading() || this.acs.sending()) return;
+    const pending = [...this.pendingFiles(), ...files];
+    if (!this.validateFiles(pending)) return;
+    this.attachmentError.set(null);
+    this.pendingFiles.set(pending);
+  }
+
+  removeAttachment(file: File): void {
+    this.pendingFiles.update((files) => files.filter((item) => item !== file));
+    this.uploadedFiles.delete(file);
+    this.attachmentError.set(null);
+  }
+
+  private clearAttachment(): void {
+    this.pendingFiles.set([]);
+    this.uploadedFiles.clear();
+    this.attachmentError.set(null);
+  }
+
+  private validateFiles(files: File[]): boolean {
+    const limits = this.acs.attachmentLimits();
+    if (!limits) {
+      this.attachmentError.set('Los adjuntos no están disponibles.');
+      return false;
+    }
+    if (files.length > limits.maxFilesPerMessage) {
+      this.attachmentError.set(`Máximo ${limits.maxFilesPerMessage} archivos por mensaje.`);
+      return false;
+    }
+    const invalid = files.find((file) => file.size <= 0 || file.size > limits.maxSizeBytes);
+    if (invalid) {
+      this.attachmentError.set(`${invalid.name}: el tamaño debe estar entre 1 y ${limits.maxSizeBytes.toLocaleString()} bytes.`);
+      return false;
+    }
+    return true;
   }
 
   async toggleRecording(): Promise<void> {
@@ -321,20 +399,26 @@ export class ChatRoom implements OnInit, OnDestroy {
     const blob = new Blob(this.recordingChunks, { type: normalizedType });
     this.recordingChunks = [];
     if (!blob.size) return;
-    await this.sendFile(
-      new File([blob], `nota-de-voz-${Date.now()}.${extension}`, { type: normalizedType }),
-    );
+    await this.sendFiles([new File([blob], `nota-de-voz-${Date.now()}.${extension}`, { type: normalizedType })]);
   }
 
-  private async sendFile(file: File): Promise<void> {
-    if (!this.canWrite() || this.uploading()) return;
+  private async sendFiles(files: File[], caption = ''): Promise<boolean> {
+    if (!this.canWrite() || this.uploading() || this.acs.sending() || !this.validateFiles(files)) return false;
     this.uploading.set(true);
     this.attachmentError.set(null);
     try {
-      const attachment = await this.chat.uploadAttachment(this.ticketId, file);
-      await this.acs.sendAttachment(this.ticketId, attachment);
+      const attachments: ChatAttachmentMetadata[] = [];
+      for (const file of files) {
+        const attachment = this.uploadedFiles.get(file) ?? await this.chat.uploadAttachment(this.ticketId, file);
+        if (!this.canWrite()) return false;
+        if (this.pendingFiles().includes(file)) this.uploadedFiles.set(file, attachment);
+        attachments.push(attachment);
+      }
+      await this.acs.sendAttachments(this.ticketId, attachments, caption);
+      return true;
     } catch (error) {
       this.attachmentError.set(this.describe(error));
+      return false;
     } finally {
       this.uploading.set(false);
     }
@@ -453,8 +537,19 @@ export class ChatRoom implements OnInit, OnDestroy {
     }
   }
 
+  openMyChats(): void {
+    const home = this.auth.homeRoute();
+    void this.router.navigate([home], {
+      queryParams: home === '/home/medicos' ? { tab: 'mios' } : undefined,
+    });
+  }
+
   /** Vuelve al home que corresponde a quien está en sesión. */
   back(): void {
+    if (this.embeddedTicketId()) {
+      this.closeEmbedded.emit();
+      return;
+    }
     void this.router.navigate([this.auth.homeRoute()]);
   }
 

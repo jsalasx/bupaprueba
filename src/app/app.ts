@@ -1,6 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { Component, OnInit, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { AcsSessionService } from './chat/acs-session.service';
 import { DeepLinkService } from './deep-link.service';
 import { NotificationService } from './notifications/notification.service';
 
@@ -13,6 +14,7 @@ import { NotificationService } from './notifications/notification.service';
 export class App implements OnInit {
   private readonly deepLink = inject(DeepLinkService);
   readonly notifications = inject(NotificationService);
+  readonly chatSession = inject(AcsSessionService);
 
   /**
    * El listener de deep links se registra aquí y no en la pantalla de login:

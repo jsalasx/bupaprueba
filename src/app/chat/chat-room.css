@@ -176,6 +176,16 @@
   cursor: default;
 }
 
+.pending-attachment {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+}
+
 .attachment-banner {
   margin: 0;
   padding: 0.55rem 1rem;
@@ -523,4 +533,18 @@
 .btn-close:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.chat.embedded {
+  height: 100%;
+  max-width: none;
+  overflow: auto;
+}
+
+.chat.embedded .composer {
+  flex-wrap: wrap;
+}
+
+.chat.embedded .input {
+  min-width: 5rem;
 }

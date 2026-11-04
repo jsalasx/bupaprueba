@@ -11,7 +11,7 @@ import { sseStream } from '../shared/sse-stream';
  *     pudo cambiar mientras estaba caída: hay que recargarlo.
  *   - closed: el médico cerró el requerimiento. El servidor termina el stream.
  */
-export type TicketStreamEvent = { type: 'ready'; reconnected: boolean } | { type: 'closed' };
+export type TicketStreamEvent = { type: 'ready'; reconnected: boolean } | { type: 'closed' } | { type: 'delivered' };
 
 /** Cliente del stream en vivo de un requerimiento, para quienes participan en él. */
 @Injectable({ providedIn: 'root' })
@@ -28,6 +28,7 @@ export class TicketStreamService {
     }).pipe(
       mergeMap((e): TicketStreamEvent[] => {
         if (e.event === 'ready') return [{ type: 'ready', reconnected: e.reconnected }];
+        if (e.event === 'message_delivered') return [{ type: 'delivered' }];
         if (e.event === 'ticket_closed') return [{ type: 'closed' }];
         return [];
       }),

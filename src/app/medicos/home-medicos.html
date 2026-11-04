@@ -11,17 +11,60 @@
     <button [class.active]="tab() === 'cola'" (click)="switchTab('cola')">Cola</button>
     <button [class.active]="tab() === 'mios'" (click)="switchTab('mios')">Míos</button>
     <button [class.active]="tab() === 'panel'" (click)="switchTab('panel')">Panel</button>
+    <button [class.active]="tab() === 'todos'" (click)="switchTab('todos')">Todos los chats</button>
     <span class="spacer"></span>
     <span class="live" [class.on]="queueStream.connected()">
       {{ queueStream.connected() ? '● En vivo' : '○ Sin conexión en vivo' }}
     </span>
-    <button class="btn-link" (click)="refresh()" [disabled]="loading()">
-      {{ loading() ? 'Cargando…' : '↻ Actualizar' }}
+    <button class="btn-link" (click)="refresh()" [disabled]="tab() === 'todos' ? conversationsLoading() : loading()">
+      {{ (tab() === 'todos' ? conversationsLoading() : loading()) ? 'Cargando…' : '↻ Actualizar' }}
     </button>
   </nav>
 
-  @if (error()) {
+  @if (tab() !== 'todos' && error()) {
     <div class="alert error">{{ error() }}</div>
+  }
+
+  @if (tab() === 'todos') {
+    <p class="hint">Conversaciones de todo el equipo, incluidas las cerradas.</p>
+    @if (conversationsError(); as failure) {
+      <div class="alert error">{{ failure }}</div>
+    }
+    @if (!conversationsLoading() && !conversationsError() && !conversations().length) {
+      <p class="empty">No hay conversaciones.</p>
+    }
+    <ul class="list">
+      @for (chat of conversations(); track chat.ticketId) {
+        <li class="item">
+          <div class="item-main">
+            <span class="subject">{{ chat.ticketName }} · {{ chat.subject }}</span>
+            <span class="meta">
+              {{ chat.createdAt | date: 'short' }} ·
+              <span class="status status-{{ chat.status }}">{{ statusLabel[chat.status] }}</span>
+              @if (chat.patientName) { · {{ chat.patientName }} }
+              @if (chat.assigneeName || chat.assigneeId) { · Atiende {{ chat.assigneeName || chat.assigneeId }} }
+            </span>
+            @if (chat.consultationReason) {
+              <span class="meta">Motivo: {{ chat.consultationReason }}</span>
+            }
+            @if (chat.lastMessage; as message) {
+              <span class="meta">
+                {{ message.senderFullName || message.senderName || 'Remitente' }} · {{ message.createdAt | date: 'short' }}
+              </span>
+              <span>{{ message.body || 'Mensaje sin texto' }}</span>
+            } @else {
+              <span class="meta">Sin mensajes guardados</span>
+            }
+          </div>
+          <button class="btn-ghost" (click)="openHistory(chat.ticketId, chat)">Leer historial</button>
+        </li>
+      }
+    </ul>
+    @if (conversationCursor(); as cursor) {
+      <button class="btn-link" (click)="loadConversations(cursor)" [disabled]="conversationsLoading()">
+        Cargar más chats
+      </button>
+    }
   }
 
   <!-- ── Cola compartida ── -->
@@ -52,40 +95,62 @@
 
   <!-- ── Los que atiende este médico ── -->
   @if (tab() === 'mios') {
-    <p class="hint">Requerimientos en los que participas. Aquí es donde conversas.</p>
+    <div class="mine-layout">
+      <aside class="mine-sidebar" aria-label="Mis chats">
+        <p class="hint">Requerimientos en los que participas. Aquí es donde conversas.</p>
 
-    @if (!loading() && mine().length === 0) {
-      <p class="empty">No estás atendiendo ningún requerimiento.</p>
-    }
+        @if (!loading() && mine().length === 0) {
+          <p class="empty">No estás atendiendo ningún requerimiento.</p>
+        }
 
-    <ul class="list">
-      @for (t of mine(); track t.id) {
-        <li class="item">
-          <div class="item-main" (click)="openChat(t.id)">
-            <span class="subject">
-              {{ t.subject }}
-              @if (t.hasUnread) { <span class="dot" title="Mensajes nuevos"></span> }
-            </span>
-            <span class="meta">
-              {{ t.patientName || t.patientId }} ·
-              <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
-              <!--
-                awaitingReply lo calcula el backend con el autor del último mensaje. Es
-                lo que permite priorizar: el punto de "no leído" dice que llegó algo,
-                esto dice que sigue esperando una respuesta.
-              -->
-              @if (t.awaitingReply) { · <span class="tag-wait">Sin responder</span> }
-            </span>
-          </div>
-          <div class="actions">
-            <button class="btn-ghost" (click)="openChat(t.id)">Abrir chat</button>
-            @if (t.status === 'IN_PROGRESS') {
-              <button class="btn-ghost danger" (click)="release(t.id)">Devolver</button>
-            }
-          </div>
-        </li>
-      }
-    </ul>
+        <ul class="list">
+          @for (t of mine(); track t.id) {
+            <li class="item" [class.selected]="selectedTicket() === t.id">
+              <div class="item-main">
+                <span class="subject">
+                  {{ t.subject }}
+                  @if ((t.unreadCount ?? 0) > 0) {
+                    <span class="tag-wait" title="Mensajes sin leer">{{ t.unreadCount }}</span>
+                  } @else if (t.unreadCount === undefined && t.hasUnread) {
+                    <span class="dot" title="Hay mensajes nuevos"></span>
+                  }
+                </span>
+                <span class="meta">
+                  {{ t.patientName || t.patientId }} ·
+                  <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
+                  <!--
+                    awaitingReply lo calcula el backend con el autor del último mensaje. Es
+                    lo que permite priorizar: el punto de "no leído" dice que llegó algo,
+                    esto dice que sigue esperando una respuesta.
+                  -->
+                  @if (t.awaitingReply) { · <span class="tag-wait">Sin responder</span> }
+                </span>
+                @if (t.lastMessage; as message) {
+                  <span class="meta mine-preview" [title]="message.body">
+                    {{ message.senderFullName || message.senderName || 'Remitente' }}: {{ message.body || 'Adjunto o mensaje sin texto' }}
+                  </span>
+                }
+              </div>
+              <div class="actions">
+                <button class="btn-ghost" (click)="openChat(t.id)" [attr.aria-pressed]="selectedTicket() === t.id">Abrir chat</button>
+                @if (t.status === 'IN_PROGRESS') {
+                  <button class="btn-ghost danger" (click)="release(t.id)">Devolver</button>
+                }
+              </div>
+            </li>
+          }
+        </ul>
+      </aside>
+      <section class="mine-room" aria-label="Conversación seleccionada">
+        @if (selectedTicket(); as ticketId) {
+          @for (id of [ticketId]; track id) {
+            <app-chat-room [embeddedTicketId]="id" (closeEmbedded)="selectedTicket.set(null)" />
+          }
+        } @else {
+          <p class="empty">Selecciona un chat para abrirlo.</p>
+        }
+      </section>
+    </div>
   }
 
   <!-- ── Panel: todo el equipo, con filtros ── -->
@@ -150,6 +215,7 @@
             </span>
           </div>
           <div class="actions">
+            <button class="btn-ghost" (click)="openHistory(p.id)">Leer historial</button>
             <span class="status status-{{ p.status }}">{{ statusLabel[p.status] }}</span>
             @if (p.status === 'OPEN') {
               <button class="btn-primary" (click)="claim(p.id)" [disabled]="claiming() === p.id">

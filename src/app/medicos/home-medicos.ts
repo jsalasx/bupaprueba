@@ -1,14 +1,16 @@
 import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import { debounceTime, firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage, AuthService } from '../auth.service';
 import { NotificationService } from '../notifications/notification.service';
+import { ChatRoom } from '../chat/chat-room';
 import { QueueStreamService } from './queue-stream.service';
 import {
+  ChatConversation,
   ChatService,
   PanelItem,
   Ticket,
@@ -16,27 +18,17 @@ import {
   TICKET_STATUS_LABEL,
 } from '../chat/chat.service';
 
-/**
- * Home del equipo médico.
- *
- * Tiene tres vistas sobre los mismos requerimientos, y la diferencia entre ellas
- * es de ALCANCE, no de presentación:
- *
- *   - Cola: los abiertos que nadie atiende. Es de donde se toma trabajo.
- *   - Míos: aquellos en los que este médico participa. Es donde se conversa.
- *   - Panel: TODO el equipo, con filtros. Es para buscar y coordinarse; devuelve
- *     solo metadatos y desde ahí no se entra a ninguna conversación ajena.
- */
 @Component({
   selector: 'app-home-medicos',
   standalone: true,
-  imports: [FormsModule, DatePipe],
+  imports: [FormsModule, DatePipe, ChatRoom],
   templateUrl: './home-medicos.html',
   styleUrls: ['./home-medicos.css'],
 })
 export class HomeMedicos implements OnInit {
   private readonly chat = inject(ChatService);
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
   private readonly notifications = inject(NotificationService);
   readonly queueStream = inject(QueueStreamService);
   private readonly destroyRef = inject(DestroyRef);
@@ -44,11 +36,16 @@ export class HomeMedicos implements OnInit {
 
   readonly statusLabel = TICKET_STATUS_LABEL;
 
-  readonly tab = signal<'cola' | 'mios' | 'panel'>('cola');
+  readonly tab = signal<'cola' | 'mios' | 'panel' | 'todos'>('cola');
 
   readonly queue = signal<Ticket[]>([]);
   readonly mine = signal<Ticket[]>([]);
+  readonly selectedTicket = signal<string | null>(null);
   readonly panel = signal<PanelItem[]>([]);
+  readonly conversations = signal<ChatConversation[]>([]);
+  readonly conversationCursor = signal<string | undefined>(undefined);
+  readonly conversationsLoading = signal(false);
+  readonly conversationsError = signal<string | null>(null);
 
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -62,6 +59,12 @@ export class HomeMedicos implements OnInit {
   readonly fTo = signal('');
 
   ngOnInit(): void {
+    this.chat.inboxChanges.pipe(debounceTime(500), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        if (this.tab() === 'mios' || this.tab() === 'todos') void this.refresh();
+      });
+    const initialTab = this.route.snapshot.queryParamMap.get('tab');
+    if (initialTab === 'todos' || initialTab === 'mios') this.tab.set(initialTab);
     this.notifications.queueEvents.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((event) => {
       if (event === 'open') this.tab.set('cola');
       if (this.tab() === 'cola') void this.refresh();
@@ -78,13 +81,17 @@ export class HomeMedicos implements OnInit {
     void this.refresh();
   }
 
-  async switchTab(tab: 'cola' | 'mios' | 'panel'): Promise<void> {
+  async switchTab(tab: 'cola' | 'mios' | 'panel' | 'todos'): Promise<void> {
     this.tab.set(tab);
     await this.refresh();
   }
 
-  /** Recarga la vista activa. Solo esa: las otras dos se piden al abrirlas. */
+  /** Recarga la vista activa. */
   async refresh(): Promise<void> {
+    if (this.tab() === 'todos') {
+      await this.loadConversations();
+      return;
+    }
     this.loading.set(true);
     this.error.set(null);
 
@@ -141,6 +148,25 @@ export class HomeMedicos implements OnInit {
     }
   }
 
+  async loadConversations(cursor?: string): Promise<void> {
+    if (this.conversationsLoading()) return;
+    this.conversationsLoading.set(true);
+    this.conversationsError.set(null);
+    try {
+      const page = await firstValueFrom(this.chat.listConversations(cursor));
+      this.conversations.update((rows) => cursor ? [...rows, ...page.items] : page.items);
+      this.conversationCursor.set(page.nextCursor);
+    } catch (error) {
+      this.conversationsError.set(this.describe(error));
+    } finally {
+      this.conversationsLoading.set(false);
+    }
+  }
+
+  openHistory(ticketId: string, conversation?: ChatConversation): void {
+    void this.router.navigate(['/chat', ticketId, 'history'], { info: { conversation } });
+  }
+
   clearFilters(): void {
     this.fStatus.set('');
     this.fAssignee.set('');
@@ -180,6 +206,7 @@ export class HomeMedicos implements OnInit {
     this.error.set(null);
     try {
       await firstValueFrom(this.chat.releaseTicket(ticketId));
+      if (this.selectedTicket() === ticketId) this.selectedTicket.set(null);
       await this.refresh();
     } catch (error) {
       this.error.set(this.describe(error));
@@ -187,7 +214,7 @@ export class HomeMedicos implements OnInit {
   }
 
   openChat(ticketId: string): void {
-    void this.router.navigate(['/chat', ticketId]);
+    this.selectedTicket.set(ticketId);
   }
 
   async logout(): Promise<void> {

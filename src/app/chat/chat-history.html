@@ -1,0 +1,52 @@
+<div class="chat">
+  <header class="head">
+    <a class="btn-back" [routerLink]="['/home/medicos']" [queryParams]="{ tab: 'todos' }" aria-label="Volver a todos los chats">←</a>
+    <div class="head-main">
+      <strong class="subject">{{ conversation?.ticketName || 'Historial de conversación' }}</strong>
+      @if (conversation; as chat) {
+        <span class="meta">Creado el {{ chat.createdAt | date: 'short' }} · {{ chat.subject }}</span>
+        @if (chat.consultationReason) {
+          <span class="meta">Motivo: {{ chat.consultationReason }}</span>
+        }
+      }
+    </div>
+  </header>
+
+  <p class="alert warn">Historial guardado · Solo lectura</p>
+  @if (error(); as failure) {
+    <div class="alert error">{{ failure }}</div>
+  }
+
+  <div class="messages">
+    @if (!loading() && !error() && !messages().length) {
+      <p class="state">Todavía no hay mensajes guardados para este ticket.</p>
+    }
+    @for (message of messages(); track message.id) {
+      <div class="msg" [class.mine]="message.senderSide === 'DOCTOR'">
+        <div class="bubble">
+          <strong>{{ message.senderFullName || message.senderName || 'Remitente' }}</strong>
+          <span class="meta">
+            @if (message.senderSide === 'PATIENT') { Paciente · }
+            @if (message.senderSide === 'DOCTOR') { Equipo médico · }
+            {{ message.createdAt | date: 'short' }}
+          </span>
+          <div style="white-space: pre-wrap; overflow-wrap: anywhere">{{ message.body || 'Mensaje sin texto' }}</div>
+          @if (message.attachments.length) {
+            <ul>
+              @for (file of message.attachments; track $index) {
+                <li>{{ file.filename }}</li>
+              }
+            </ul>
+          }
+        </div>
+      </div>
+    }
+    @if (loading()) {
+      <p class="state">Cargando mensajes…</p>
+    } @else if (cursor(); as next) {
+      <button class="btn-link" (click)="load(next)">Cargar más mensajes</button>
+    } @else if (error()) {
+      <button class="btn-link" (click)="load()">Reintentar</button>
+    }
+  </div>
+</div>

@@ -4,16 +4,18 @@ import { Router } from '@angular/router';
 import { App } from '@capacitor/app';
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications, Token } from '@capacitor/push-notifications';
-import { initializeApp } from 'firebase/app';
-import { getMessaging, getToken, Messaging, onMessage } from 'firebase/messaging';
+import { getApps, initializeApp } from 'firebase/app';
+import { getMessaging, getToken, isSupported, Messaging, onMessage } from 'firebase/messaging';
 import { firstValueFrom, Subject } from 'rxjs';
 import { AuthService } from '../auth.service';
+import { ChatService } from '../chat/chat.service';
 import { environment } from '../../environments/environment';
 
 @Injectable({ providedIn: 'root' })
 export class NotificationService {
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
+  private readonly chat = inject(ChatService);
   private readonly zone = inject(NgZone);
   private readonly router = inject(Router);
   readonly status = signal('Push sin configurar');
@@ -21,6 +23,10 @@ export class NotificationService {
   readonly history = signal<AppNotification[]>([]);
   readonly unreadCount = computed(() => this.history().filter((item) => !item.isRead).length);
   readonly historyOpen = signal(false);
+  readonly enabling = signal(false);
+  readonly pushError = signal<string | null>(null);
+  readonly markingAllRead = signal(false);
+  readonly markAllReadError = signal<string | null>(null);
   readonly fcmToken = signal<string | null>(localStorage.getItem('fcm-token'));
   /** Señal en primer plano para que la pantalla médica refresque la cola sin sondeo. */
   readonly queueEvents = new Subject<'received' | 'open'>();
@@ -29,6 +35,7 @@ export class NotificationService {
   private toastTimer: ReturnType<typeof setTimeout> | null = null;
   private activeHistoryKey = '';
   private webMessaging: Messaging | null = null;
+  private webRegistration: ServiceWorkerRegistration | null = null;
   private webListenerReady = false;
   private registrationCheckStarted = false;
   private pendingNotificationId: string | null = null;
@@ -60,7 +67,7 @@ export class NotificationService {
     this.startRegistrationChecks();
     this.captureBackgroundNotificationClick();
     if (!Capacitor.isNativePlatform()) {
-      if (Notification.permission === 'granted') void this.enableWeb().catch(() => undefined);
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') void this.enable();
       return;
     }
     if (this.nativeListenersReady) return;
@@ -104,22 +111,55 @@ export class NotificationService {
   }
 
   async enable(): Promise<void> {
+    if (this.enabling()) return;
+    this.enabling.set(true);
+    this.pushError.set(null);
+    this.status.set('Activando push…');
     try {
       if (Capacitor.isNativePlatform()) await this.enableNative();
       else await this.enableWeb();
     } catch (error) {
-      this.status.set(error instanceof Error ? error.message : 'No se pudo activar push');
+      const message = error instanceof Error ? error.message : 'No se pudo activar push';
+      this.status.set(message);
+      this.pushError.set(message);
+    } finally {
+      this.enabling.set(false);
     }
   }
 
   private async enableWeb(): Promise<void> {
     if (!environment.firebase.apiKey || !environment.firebase.vapidKey)
       throw new Error('Completa firebase y vapidKey en environment.ts');
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') throw new Error('Permiso de notificaciones denegado');
-    await this.prepareSound();
-    this.webMessaging ??= getMessaging(initializeApp(environment.firebase));
-    const token = await getToken(this.webMessaging, { vapidKey: environment.firebase.vapidKey });
+    const ios = /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const standalone = window.matchMedia('(display-mode: standalone)').matches
+      || (navigator as Navigator & { standalone?: boolean }).standalone;
+    if (ios && !standalone) {
+      throw new Error('En iPhone o iPad, agrega esta web a la pantalla de inicio y ábrela desde su icono.');
+    }
+    if (!window.isSecureContext) throw new Error('Las notificaciones web requieren HTTPS.');
+    if (typeof Notification === 'undefined' || !('serviceWorker' in navigator) || !('PushManager' in window)) {
+      throw new Error('Este navegador no admite notificaciones web en este modo.');
+    }
+    const permission = Notification.permission === 'default'
+      ? await Notification.requestPermission() : Notification.permission;
+    if (permission !== 'granted') {
+      throw new Error('Permite las notificaciones para este sitio en la configuración del navegador.');
+    }
+    void this.prepareSound().catch(() => undefined);
+    if (!(await isSupported())) throw new Error('Firebase Push no está disponible en este navegador.');
+    const registered = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    const registration = registered.active ? registered : await navigator.serviceWorker.ready;
+    if (registration.scope !== registered.scope) {
+      throw new Error('El service worker de push no controla esta página.');
+    }
+    this.webRegistration = registration;
+    const firebaseApp = getApps().find((app) => app.name === '[DEFAULT]') ?? initializeApp(environment.firebase);
+    this.webMessaging ??= getMessaging(firebaseApp);
+    const token = await getToken(this.webMessaging, {
+      vapidKey: environment.firebase.vapidKey,
+      serviceWorkerRegistration: registration,
+    });
     this.saveFCMToken(token);
     if (this.auth.accessToken()) await this.register(token, 'web');
     else this.status.set('Token FCM recibido; inicia sesión para asociarlo a tu cuenta');
@@ -127,13 +167,13 @@ export class NotificationService {
       onMessage(this.webMessaging, (payload) =>
         this.zone.run(() => {
           const title =
-            payload.notification?.title || payload.data?.['senderName'] || 'Nuevo mensaje';
+            payload.notification?.title || payload.data?.['title'] || payload.data?.['senderName'] || 'Nuevo mensaje';
           const body =
-            payload.notification?.body || payload.data?.['message'] || 'Tienes un nuevo mensaje';
+            payload.notification?.body || payload.data?.['body'] || payload.data?.['message'] || 'Tienes un nuevo mensaje';
           const ticketId = payload.data?.['ticketId'];
           const destination = payload.data?.['destination'];
           if (payload.data?.['type'] === 'queueCreated') this.queueEvents.next('received');
-          const item = this.receiveNotification(
+          this.receiveNotification(
             title,
             body,
             ticketId,
@@ -142,13 +182,14 @@ export class NotificationService {
           );
           this.playSound();
 
-          const notification = new Notification(title, { body, data: { ticketId, destination } });
-          setTimeout(() => notification.close(), 30_000);
-          notification.onclick = () => {
-            window.focus();
-            notification.close();
-            this.zone.run(() => void this.openHistoryItem(item));
-          };
+          void registration.showNotification(title, {
+            body,
+            tag: payload.data?.['notificationId'],
+            data: {
+              destination: destination || (ticketId ? `/chat/${ticketId}` : '/'),
+              notificationId: payload.data?.['notificationId'],
+            },
+          }).catch(() => undefined);
         }),
       );
       this.webListenerReady = true;
@@ -209,6 +250,30 @@ export class NotificationService {
 
   toggleHistory(): void {
     this.historyOpen.update((open) => !open);
+    if (this.historyOpen()) void this.loadHistoryFromBackend();
+  }
+
+  async markAllRead(): Promise<void> {
+    if (this.markingAllRead() || !this.auth.accessToken()) return;
+    const account = this.historyKey();
+    const ids = new Set(this.history().map((item) => item.id));
+    this.markingAllRead.set(true);
+    this.markAllReadError.set(null);
+    try {
+      await firstValueFrom(this.http.patch(
+        `${environment.apiBaseUrl}/notifications/read-all`, {}, { headers: this.authHeaders },
+      ));
+      if (this.historyKey() !== account || !this.auth.accessToken()) return;
+      const readAt = new Date().toISOString();
+      this.history.update((items) => items.map((item) =>
+        ids.has(item.id) && !item.isRead ? { ...item, isRead: true, readAt } : item,
+      ));
+      this.persistLocalHistory();
+    } catch {
+      this.markAllReadError.set('No se pudieron marcar las notificaciones. Intenta nuevamente.');
+    } finally {
+      this.markingAllRead.set(false);
+    }
   }
 
   closeHistory(): void {
@@ -248,6 +313,9 @@ export class NotificationService {
     destination?: string,
     notificationId?: string,
   ): AppNotification {
+    if (ticketId && destination?.startsWith('/chat/')) {
+      this.chat.inboxChanges.next({ ticketId });
+    }
     const item: AppNotification = {
       id: notificationId || crypto.randomUUID(),
       title,
@@ -360,8 +428,11 @@ export class NotificationService {
         await PushNotifications.register();
         return;
       }
-      if (!this.webMessaging || Notification.permission !== 'granted') return;
-      const token = await getToken(this.webMessaging, { vapidKey: environment.firebase.vapidKey });
+      if (!this.webMessaging || !this.webRegistration || Notification.permission !== 'granted') return;
+      const token = await getToken(this.webMessaging, {
+        vapidKey: environment.firebase.vapidKey,
+        serviceWorkerRegistration: this.webRegistration,
+      });
       this.saveFCMToken(token);
       await this.register(token, 'web');
     } catch (error) {

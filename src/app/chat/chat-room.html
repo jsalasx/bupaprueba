@@ -1,9 +1,12 @@
-<div class="chat">
+<div class="chat" [class.embedded]="embeddedTicketId()">
   <header class="head">
     <button class="btn-back" (click)="back()" aria-label="Volver">←</button>
     <div class="head-main">
       @if (ticket(); as t) {
         <strong class="subject">{{ t.subject }}</strong>
+        @if (t.ticketName) {
+          <span class="meta">{{ t.ticketName }} · Creado el {{ t.createdAt | date: 'short' }}</span>
+        }
         <span class="meta">
           <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
           · {{ t.patientName || t.patientId }}
@@ -118,6 +121,13 @@
     </section>
   }
 
+  @if (otherChatUnread() && !embeddedTicketId()) {
+    <div class="alert warn">
+      Hay mensajes nuevos en otros chats.
+      <button class="btn-link" (click)="openMyChats()">Ver mis chats</button>
+    </div>
+  }
+
   @if (error()) {
     <div class="alert error">{{ error() }}</div>
   }
@@ -171,6 +181,10 @@
             <dd>{{ fieldOrDash(p.rut) }}</dd>
           </div>
           <div class="field">
+            <dt>Sexo biológico</dt>
+            <dd>{{ fieldOrDash(p.gender) }}</dd>
+          </div>
+          <div class="field">
             <dt>Fecha de nacimiento</dt>
             <dd>{{ fieldOrDash(p.birthdate) }}</dd>
           </div>
@@ -181,7 +195,7 @@
           </div>
           <div class="field">
             <dt>Tipo de consulta</dt>
-            <dd>{{ fieldOrDash(p.consultationType) }}</dd>
+            <dd>{{ fieldOrDash(ticket()?.consultationReason || p.consultationType) }}</dd>
           </div>
           <div class="field">
             <dt>Región de domicilio</dt>
@@ -242,7 +256,11 @@
           @if (!m.mine) {
             <span class="sender">{{ m.senderName }}</span>
           }
-          @if (m.attachment; as file) {
+          @if (m.content && (m.attachments.length < 2 || m.content !== 'Archivos adjuntos') &&
+            (m.attachments.length !== 1 || m.content !== 'Adjunto: ' + m.attachments[0].filename)) {
+            <span class="text">{{ m.content }}</span>
+          }
+          @for (file of m.attachments; track file.id) {
             <div class="attachment">
               @if (file.loading) {
                 <span class="attachment-state">Cargando {{ file.filename }}…</span>
@@ -268,10 +286,17 @@
                 <span class="attachment-name">{{ file.filename }}</span>
               }
             </div>
-          } @else {
-            <span class="text">{{ m.content }}</span>
           }
-          <span class="time">{{ m.createdOn | date: 'shortTime' }}</span>
+          <span class="time">
+            {{ m.createdOn | date: 'shortTime' }}
+            @if (m.mine) {
+              @if (deliveredIds().has(m.id)) {
+                <span title="Entregado" aria-label="Entregado">✓✓</span>
+              } @else {
+                <span title="Enviado" aria-label="Enviado">✓</span>
+              }
+            }
+          </span>
         </div>
       </div>
     }
@@ -301,11 +326,21 @@
     @if (attachmentError()) {
       <p class="attachment-banner">{{ attachmentError() }}</p>
     }
+    @if (acs.attachmentLimits(); as limits) {
+      <small class="pending-attachment">Hasta {{ limits.maxFilesPerMessage }} archivos · {{ limits.maxSizeBytes | number }} bytes por archivo</small>
+    }
+    @for (file of pendingFiles(); track file) {
+      <div class="pending-attachment">
+        <span>Adjunto pendiente: {{ file.name }}</span>
+        <button type="button" (click)="removeAttachment(file)" [disabled]="uploading() || acs.sending()">Quitar</button>
+      </div>
+    }
     <div class="composer">
       <input
         #attachmentInput
         class="file-input"
         type="file"
+        multiple
         accept="image/*,application/pdf,audio/webm,audio/ogg,audio/mp4,audio/mpeg,audio/wav"
         (change)="onFileSelected($event)"
       />
@@ -314,7 +349,7 @@
         class="btn-attach"
         title="Adjuntar imagen, PDF o audio"
         (click)="attachmentInput.click()"
-        [disabled]="!canWrite() || uploading() || acs.sending()"
+        [disabled]="!canWrite() || uploading() || acs.sending() || !acs.attachmentLimits()"
       >
         {{ uploading() ? '…' : '＋' }}
       </button>
@@ -324,7 +359,7 @@
         [class.recording]="recording()"
         [title]="recording() ? 'Detener y enviar nota de voz' : 'Grabar nota de voz'"
         (click)="toggleRecording()"
-        [disabled]="!canWrite() || uploading() || acs.sending()"
+        [disabled]="!canWrite() || uploading() || acs.sending() || !acs.attachmentLimits()"
       >
         {{ recording() ? '■' : '🎙' }}
       </button>
@@ -340,9 +375,9 @@
       <button
         class="btn-send"
         (click)="send()"
-        [disabled]="!canWrite() || acs.sending() || uploading() || recording()"
+        [disabled]="!canWrite() || acs.sending() || uploading() || recording() || (!draft().trim() && !pendingFiles().length)"
       >
-        {{ acs.sending() ? '…' : 'Enviar' }}
+        {{ (acs.sending() || uploading()) ? '…' : 'Enviar' }}
       </button>
     </div>
   }

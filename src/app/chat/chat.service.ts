@@ -1,6 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { HttpClient, HttpHeaders, HttpParams } from '@angular/common/http';
-import { firstValueFrom, Observable } from 'rxjs';
+import { HttpClient, HttpErrorResponse, HttpHeaders, HttpParams } from '@angular/common/http';
+import { firstValueFrom, Observable, Subject } from 'rxjs';
 import { environment } from '../../environments/environment';
 import { AuthService } from '../auth.service';
 
@@ -17,9 +17,54 @@ export const TICKET_STATUS_LABEL: Record<TicketStatus, string> = {
 /** Lado de la conversación que escribió el último mensaje. */
 export type MessageSide = 'PATIENT' | 'DOCTOR';
 
+export const CONSULTATION_REASONS = [
+  'SINTOMAS',
+  'RENOVAR_RECETA',
+  'ORIENTACION_DE_MEDICAMENTOS',
+  'INTERPRETACION_DE_EXAMENES',
+  'SOLICITAR ORDENES MEDICAS',
+  'OTRO',
+] as const;
+
+export type ConsultationReason = typeof CONSULTATION_REASONS[number];
+
+export interface StoredMessage {
+  id: string;
+  type: string;
+  body: string;
+  senderFullName?: string;
+  senderName?: string;
+  senderUserId?: string;
+  senderRoles?: string[];
+  senderSide?: MessageSide;
+  metadata?: Record<string, string>;
+  createdAt: string;
+}
+
+export interface ChatConversation {
+  ticketId: string;
+  ticketName: string;
+  ticketNumber: number;
+  subject: string;
+  consultationReason?: ConsultationReason;
+  patientName?: string;
+  assigneeName?: string;
+  assigneeId?: string;
+  status: TicketStatus;
+  createdAt: string;
+  lastMessage: StoredMessage | null;
+}
+
+interface ChatReadPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
 /** Requerimiento tal como lo devuelven POST /chat/tickets y GET /chat/tickets. */
 export interface Ticket {
   id: string;
+  ticketName?: string;
+  consultationReason?: ConsultationReason;
   patientId: string;
   patientName?: string;
   subject: string;
@@ -35,6 +80,8 @@ export interface Ticket {
   /** Identificador de la sala en el proveedor. Solo llega a quien participa. */
   threadId: string;
   hasUnread: boolean;
+  unreadCount?: number;
+  lastMessage?: StoredMessage;
   lastReadAt?: string;
   createdAt: string;
   lastActivityAt: string;
@@ -102,6 +149,7 @@ export interface PatientContext {
   birthdate: string;
   age: number | null;
   region: string;
+  gender?: string;
   consultationType: string;
   lastMessageAt: string | null;
   lastMessageBy: MessageSide | '';
@@ -174,7 +222,14 @@ export interface TicketHistory {
 }
 
 /** Credencial con la que el navegador habla directamente con el proveedor. */
+export interface ChatAttachmentLimits {
+  maxSizeBytes: number;
+  maxFilesPerMessage: number;
+}
+
 export interface ChatToken {
+  displayName?: string;
+  attachmentLimits?: ChatAttachmentLimits;
   token: string;
   identity: string;
   /** URL del recurso del proveedor. Viaja con la credencial, no se configura aparte. */
@@ -197,6 +252,25 @@ export interface ChatAttachmentMetadata {
   filename: string;
   contentType: string;
   sizeBytes: number;
+}
+
+export function messageAttachments(metadata?: Record<string, string>): ChatAttachmentMetadata[] {
+  const raw = metadata?.['attachments'];
+  if (raw) {
+    try {
+      const files: ChatAttachmentMetadata[] = JSON.parse(raw);
+      if (Array.isArray(files)) {
+        return files.filter((file) => file?.id && file.filename && file.contentType);
+      }
+    } catch {
+      return [];
+    }
+  }
+  const id = metadata?.['attachmentId'];
+  const filename = metadata?.['attachmentName'];
+  const contentType = metadata?.['attachmentType'];
+  if (!id || !filename || !contentType) return [];
+  return [{ id, filename, contentType, sizeBytes: Number(metadata?.['attachmentSize'] ?? 0) }];
 }
 
 /** Criterios del panel. Todos opcionales y combinables de forma restrictiva. */
@@ -240,6 +314,7 @@ export function normalizeOrderTypes(tipos: string[] | undefined): string[] {
 
 @Injectable({ providedIn: 'root' })
 export class ChatService {
+  readonly inboxChanges = new Subject<{ ticketId?: string; threadId?: string }>();
   private readonly http = inject(HttpClient);
   private readonly auth = inject(AuthService);
   private readonly base = environment.apiBaseUrl;
@@ -251,7 +326,7 @@ export class ChatService {
    * navegación gastaría una llamada por vista sin ganar nada: el token es del
    * usuario, no de la conversación.
    */
-  private readonly cachedToken = signal<ChatToken | null>(null);
+  private readonly cachedToken = signal<{ token: ChatToken; accessToken: string | null } | null>(null);
 
   /**
    * Headers de sesión de TODOS los endpoints de chat.
@@ -291,12 +366,8 @@ export class ChatService {
    * siempre es el correcto, así que la única diferencia para el cliente es qué
    * decirle al usuario. Ver `reused` en TicketDetail.
    */
-  createTicket(subject: string, consultationType?: string): Observable<TicketDetail> {
-    const body: { subject: string; consultationType?: string } = { subject };
-    const tipo = consultationType?.trim();
-    if (tipo) {
-      body.consultationType = tipo;
-    }
+  createTicket(subject: string, consultationReason?: ConsultationReason | ''): Observable<TicketDetail> {
+    const body = { subject, consultationReason: consultationReason || undefined };
     return this.http.post<TicketDetail>(`${this.base}/chat/tickets`, body, {
       headers: this.authHeaders,
     });
@@ -374,6 +445,22 @@ export class ChatService {
       params,
       headers: this.authHeaders,
     });
+  }
+
+  listConversations(cursor?: string): Observable<ChatReadPage<ChatConversation>> {
+    return this.readChatPage<ChatConversation>('/chat/conversations', 'desc', cursor);
+  }
+
+  listMessageHistory(ticketId: string, cursor?: string): Observable<ChatReadPage<StoredMessage>> {
+    return this.readChatPage<StoredMessage>(
+      `/chat/tickets/${encodeURIComponent(ticketId)}/message-history`, 'asc', cursor,
+    );
+  }
+
+  private readChatPage<T>(path: string, order: 'asc' | 'desc', cursor?: string): Observable<ChatReadPage<T>> {
+    let params = new HttpParams().set('orderBy', 'createdAt').set('order', order);
+    if (cursor) params = params.set('cursor', cursor);
+    return this.http.get<ChatReadPage<T>>(`${this.base}${path}`, { params, headers: this.authHeaders });
   }
 
   /** GET /chat/tickets/:id — detalle con participantes. Exige participar. */
@@ -470,6 +557,31 @@ export class ChatService {
   }
 
   /** POST /chat/tickets/:id/read — marca de lectura, base del indicador de no leídos. */
+  async confirmDelivery(threadId: string, messageIds: string[]): Promise<void> {
+    const account = this.auth.userEmail();
+    for (let attempt = 0; attempt < 4; attempt++) {
+      if (!this.auth.accessToken() || this.auth.userEmail() !== account) return;
+      try {
+        const response = await firstValueFrom(this.http.post<{ pending: boolean }>(
+          `${this.base}/chat/deliveries`, { threadId, messageIds }, { headers: this.authHeaders },
+        ));
+        if (!response.pending) {
+          this.inboxChanges.next({ threadId });
+          return;
+        }
+      } catch (error) {
+        if (error instanceof HttpErrorResponse && [400, 401, 403, 404].includes(error.status)) return;
+      }
+      if (attempt < 3) await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt));
+    }
+  }
+
+  listDeliveries(ticketId: string): Observable<{ messageIds: string[] }> {
+    return this.http.get<{ messageIds: string[] }>(`${this.base}/chat/tickets/${ticketId}/deliveries`, {
+      headers: this.authHeaders,
+    });
+  }
+
   markRead(ticketId: string): Observable<void> {
     return this.http.post<void>(
       `${this.base}/chat/tickets/${ticketId}/read`,
@@ -529,10 +641,12 @@ export class ChatService {
    * conversación, que fallaría con un error del proveedor sin relación aparente
    * con la sesión.
    */
-  async chatToken(): Promise<ChatToken> {
+  async chatToken(forceRefresh = false): Promise<ChatToken> {
+    const accessToken = this.auth.accessToken();
     const cached = this.cachedToken();
-    if (cached && new Date(cached.expiresOn).getTime() - Date.now() > 60_000) {
-      return cached;
+    if (!forceRefresh && cached?.accessToken === accessToken &&
+      new Date(cached.token.expiresOn).getTime() - Date.now() > 60_000) {
+      return cached.token;
     }
 
     const fresh = await new Promise<ChatToken>((resolve, reject) => {
@@ -543,7 +657,8 @@ export class ChatService {
           error: reject,
         });
     });
-    this.cachedToken.set(fresh);
+    if (this.auth.accessToken() !== accessToken) throw new Error('La sesión de chat cambió.');
+    this.cachedToken.set({ token: fresh, accessToken });
     return fresh;
   }
 

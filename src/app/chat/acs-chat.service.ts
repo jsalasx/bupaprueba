@@ -1,8 +1,9 @@
 import { Injectable, inject, signal } from '@angular/core';
-import { ChatClient, ChatThreadClient, ChatMessageReceivedEvent } from '@azure/communication-chat';
+import { ChatClient, ChatThreadClient } from '@azure/communication-chat';
 import { AzureCommunicationTokenCredential } from '@azure/communication-common';
-import { firstValueFrom } from 'rxjs';
-import { ChatAttachmentMetadata, ChatService } from './chat.service';
+import { firstValueFrom, Subscription } from 'rxjs';
+import { AcsSessionService } from './acs-session.service';
+import { ChatAttachmentLimits, ChatAttachmentMetadata, ChatService, messageAttachments } from './chat.service';
 import { AuthService } from '../auth.service';
 
 export interface ChatAttachmentView extends ChatAttachmentMetadata {
@@ -20,7 +21,7 @@ export interface ChatMessage {
   createdOn: Date;
   /** True si lo envió quien está mirando la pantalla. */
   mine: boolean;
-  attachment?: ChatAttachmentView;
+  attachments: ChatAttachmentView[];
 }
 
 /**
@@ -53,13 +54,9 @@ export class AcsChatService {
   private readonly chat = inject(ChatService);
   private readonly auth = inject(AuthService);
 
-  private client: ChatClient | null = null;
+  private readonly session = inject(AcsSessionService);
+  private roomEvents?: Subscription;
   private thread: ChatThreadClient | null = null;
-
-  /** Listeners registrados, para poder retirarlos exactamente igual al desconectar. */
-  private onMessage: ((event: ChatMessageReceivedEvent) => void) | null = null;
-  private onConnected: (() => void) | null = null;
-  private onDisconnected: (() => void) | null = null;
 
   /** Solo se arma cuando el tiempo real falla. Ver FALLBACK_POLL_MS. */
   private fallbackTimer: ReturnType<typeof setInterval> | null = null;
@@ -72,11 +69,14 @@ export class AcsChatService {
 
   /** Identidad del usuario en el proveedor; distingue los mensajes propios. */
   private identity = '';
+  private profileDisplayName = '';
+  private threadId = '';
 
   readonly messages = signal<ChatMessage[]>([]);
   readonly connected = signal(false);
   readonly error = signal<string | null>(null);
   readonly sending = signal(false);
+  readonly attachmentLimits = signal<ChatAttachmentLimits | undefined>(undefined);
   /**
    * Si la conversación recibe por notificaciones. En false con `connected` en true
    * significa que se cayó al sondeo de respaldo: la pantalla lo dice, porque un
@@ -98,78 +98,58 @@ export class AcsChatService {
     try {
       const credential = await this.chat.chatToken();
       this.identity = credential.identity;
+      this.profileDisplayName = credential.displayName?.trim() ?? '';
+      this.attachmentLimits.set(credential.attachmentLimits);
 
       // El endpoint viaja con la credencial: los dos describen el mismo recurso, y
       // configurarlo aparte permitiría que apuntaran a recursos distintos.
-      this.client = new ChatClient(
+      const client = new ChatClient(
         credential.endpoint,
         new AzureCommunicationTokenCredential(credential.token),
       );
-      this.thread = this.client.getChatThreadClient(threadId);
+      this.thread = client.getChatThreadClient(threadId);
+      this.threadId = threadId;
 
-      // El historial se lee UNA vez. A partir de aquí, lo nuevo llega solo.
+      // Suscribirse primero cubre mensajes que llegan durante la carga inicial.
+      this.watchSession(threadId);
       await this.loadHistory();
-      this.connected.set(true);
-
-      await this.startRealtime(this.client);
+      if (this.threadId === threadId) this.connected.set(true);
     } catch (error) {
       console.error('[ACS] No se pudo abrir la conversación:', error);
       this.error.set(this.describe(error));
-      this.connected.set(false);
-      this.live.set(false);
+      await this.disconnect();
     }
   }
 
-  /**
-   * Suscribe la pantalla a los mensajes del hilo.
-   *
-   * Si la señalización no arranca —red que bloquea el WebSocket del proveedor, por
-   * ejemplo— NO se propaga el error: la conversación ya está cargada y es mejor
-   * seguir con el sondeo de respaldo que dejar al usuario sin poder escribir.
-   */
-  private async startRealtime(client: ChatClient): Promise<void> {
-    try {
-      // Hay que arrancar las notificaciones ANTES de suscribirse a ningún evento.
-      await client.startRealtimeNotifications();
-
-      this.onMessage = (event: ChatMessageReceivedEvent) => {
-        const senderId =
-          (event.sender as { communicationUserId?: string })?.communicationUserId ?? '';
-        const message: ChatMessage = {
-          id: event.id,
-          content: event.message ?? '',
-          senderId,
-          senderName: event.senderDisplayName || 'Participante',
-          createdOn: event.createdOn ? new Date(event.createdOn) : new Date(),
-          mine: senderId === this.identity,
-          attachment: this.attachmentFrom(event.metadata),
-        };
-        this.byId.set(event.id, message);
-        this.publish();
-        void this.loadAttachment(event.id, message.attachment);
+  private watchSession(threadId: string): void {
+    this.roomEvents = new Subscription();
+    this.roomEvents.add(this.session.messages$.subscribe((event) => {
+      if (event.threadId !== threadId || this.byId.has(event.id)) return;
+      const senderId = (event.sender as { communicationUserId?: string })?.communicationUserId ?? '';
+      const message: ChatMessage = {
+        id: event.id,
+        content: event.message ?? '',
+        senderId,
+        senderName: event.senderDisplayName || 'Participante',
+        createdOn: event.createdOn ? new Date(event.createdOn) : new Date(),
+        mine: senderId === this.identity,
+        attachments: messageAttachments(event.metadata).map((file) => ({ ...file, loading: true })),
       };
+      this.byId.set(event.id, message);
+      this.publish();
+      for (const file of message.attachments) void this.loadAttachment(message, file);
+    }));
 
-      this.onConnected = () => {
-        this.live.set(true);
-        this.error.set(null);
-      };
-
-      this.onDisconnected = () => {
-        // El SDK reintenta por su cuenta. Se avisa en la pantalla para que un corte
-        // no se lea como "nadie me ha respondido".
-        this.live.set(false);
-      };
-
-      client.on('chatMessageReceived', this.onMessage);
-      client.on('realTimeNotificationConnected', this.onConnected);
-      client.on('realTimeNotificationDisconnected', this.onDisconnected);
-
-      this.live.set(true);
-    } catch (error) {
-      console.warn('[ACS] Sin notificaciones en tiempo real; se usa el sondeo de respaldo:', error);
-      this.live.set(false);
-      this.startFallbackPolling();
-    }
+    this.roomEvents.add(this.session.connected$.subscribe((connected) => {
+      this.live.set(connected);
+      if (!connected) {
+        this.startFallbackPolling();
+      } else if (this.fallbackTimer) {
+        clearInterval(this.fallbackTimer);
+        this.fallbackTimer = null;
+        void this.loadHistory().catch(() => undefined);
+      }
+    }));
   }
 
   /** Sondeo de respaldo. Solo se llama cuando el tiempo real no está disponible. */
@@ -191,44 +171,19 @@ export class AcsChatService {
       this.fallbackTimer = null;
     }
 
-    const client = this.client;
-    if (client) {
-      // `off` del SDK no declara en su tipado los eventos de conexión del canal, aunque
-      // `on` sí los acepta y en tiempo de ejecución funcionan: es un hueco de sus tipos.
-      // El puente se limita a esta llamada — castear el cliente entero perdería el
-      // tipado del resto de la API.
-      const emitter = client as unknown as {
-        off(event: string, listener: (...args: never[]) => void): void;
-      };
-
-      // Se retiran los listeners ANTES de parar el canal: al revés, un evento en
-      // vuelo podría escribir sobre la lista de una conversación ya abandonada.
-      if (this.onMessage) {
-        client.off('chatMessageReceived', this.onMessage);
-      }
-      if (this.onConnected) {
-        emitter.off('realTimeNotificationConnected', this.onConnected as never);
-      }
-      if (this.onDisconnected) {
-        emitter.off('realTimeNotificationDisconnected', this.onDisconnected as never);
-      }
-      try {
-        await client.stopRealtimeNotifications();
-      } catch {
-        // Cerrar un canal ya caído falla y no cambia nada: se ignora a propósito.
-      }
-    }
-
-    this.onMessage = null;
-    this.onConnected = null;
-    this.onDisconnected = null;
-    this.client = null;
+    this.roomEvents?.unsubscribe();
+    this.roomEvents = undefined;
     this.thread = null;
+    this.threadId = '';
+    this.profileDisplayName = '';
     this.byId.clear();
     for (const message of this.messages()) {
-      if (message.attachment?.url) URL.revokeObjectURL(message.attachment.url);
+      for (const file of message.attachments) {
+        if (file.url) URL.revokeObjectURL(file.url);
+      }
     }
     this.messages.set([]);
+    this.attachmentLimits.set(undefined);
     this.connected.set(false);
     this.live.set(false);
   }
@@ -236,62 +191,57 @@ export class AcsChatService {
   /**
    * Envía un mensaje y avisa al backend de la actividad.
    *
-   * No relee el hilo después de enviar: el propio mensaje vuelve por la notificación,
-   * igual que los ajenos. Releer aquí era lo que hacía la versión con sondeo, y
-   * significaba pagar el historial completo en cada envío.
+   * El mensaje propio aparece cuando ACS devuelve su ID. La notificación en tiempo
+   * real y el historial se deduplican con ese mismo ID.
    *
    * El aviso al backend va DESPUÉS del envío y su fallo no se propaga: el mensaje ya
    * está en la conversación, y decirle al usuario que falló solo le haría reenviarlo.
    * Lo que se pierde es que el requerimiento suba en los listados, no el mensaje.
    */
-  async send(ticketId: string, content: string): Promise<void> {
+  async send(ticketId: string, content: string): Promise<boolean> {
     const texto = content.trim();
-    if (!texto || !this.thread) {
-      return;
-    }
+    const thread = this.thread;
+    if (!texto || !thread) return false;
 
     this.sending.set(true);
     try {
-      await this.thread.sendMessage(
+      const { id } = await thread.sendMessage(
         { content: texto },
         { senderDisplayName: this.senderDisplayName() },
       );
-
-      // Sin notificaciones nadie va a traer el propio mensaje: se relee una vez.
-      if (!this.live()) {
-        await this.loadHistory();
-      }
+      if (this.thread === thread) this.recordSent(id, texto);
 
       this.chat.reportActivity(ticketId).subscribe({
         error: (err) => console.warn('[ACS] no se pudo reportar la actividad:', err),
       });
+      return true;
     } catch (error) {
       console.error('[ACS] No se pudo enviar el mensaje:', error);
       this.error.set(this.describe(error));
+      return false;
     } finally {
       this.sending.set(false);
     }
   }
 
   /** Publica en ACS una referencia segura al adjunto ya almacenado en Blob Storage. */
-  async sendAttachment(ticketId: string, attachment: ChatAttachmentMetadata): Promise<void> {
-    if (!this.thread) return;
+  async sendAttachments(ticketId: string, files: ChatAttachmentMetadata[], caption = ''): Promise<void> {
+    const thread = this.thread;
+    if (!thread) throw new Error('La conversación está desconectada.');
+    const first = files[0];
+    const metadata: Record<string, string> = files.length === 1 ? {
+      attachmentId: first.id,
+      attachmentName: first.filename,
+      attachmentType: first.contentType,
+      attachmentSize: String(first.sizeBytes),
+    } : { attachments: JSON.stringify(files.map(({ id, filename, contentType, sizeBytes }) =>
+      ({ id, filename, contentType, sizeBytes }))) };
 
     this.sending.set(true);
     try {
-      await this.thread.sendMessage(
-        { content: `Adjunto: ${attachment.filename}` },
-        {
-          senderDisplayName: this.senderDisplayName(),
-          metadata: {
-            attachmentId: attachment.id,
-            attachmentName: attachment.filename,
-            attachmentType: attachment.contentType,
-            attachmentSize: String(attachment.sizeBytes),
-          },
-        },
-      );
-      if (!this.live()) await this.loadHistory();
+      const content = caption.trim() || (files.length === 1 ? `Adjunto: ${first.filename}` : 'Archivos adjuntos');
+      const { id } = await thread.sendMessage({ content }, { senderDisplayName: this.senderDisplayName(), metadata });
+      if (this.thread === thread) this.recordSent(id, content, files);
       this.chat.reportActivity(ticketId).subscribe({ error: () => undefined });
     } catch (error) {
       this.error.set(this.describe(error));
@@ -299,6 +249,17 @@ export class AcsChatService {
     } finally {
       this.sending.set(false);
     }
+  }
+
+  private recordSent(id: string, content: string, files: ChatAttachmentMetadata[] = []): void {
+    if (this.byId.has(id)) return;
+    const message: ChatMessage = {
+      id, content, senderId: this.identity, senderName: this.senderDisplayName(),
+      createdOn: new Date(), mine: true, attachments: files.map((file) => ({ ...file, loading: true })),
+    };
+    this.byId.set(id, message);
+    this.publish();
+    for (const file of message.attachments) void this.loadAttachment(message, file);
   }
 
   /**
@@ -310,11 +271,20 @@ export class AcsChatService {
       return;
     }
 
-    for await (const raw of this.thread.listMessages()) {
+    const thread = this.thread;
+    const threadId = this.threadId;
+    const received: string[] = [];
+    for await (const raw of thread.listMessages()) {
+      if (this.thread !== thread) return;
       // ACS emite también eventos del hilo (altas y bajas de participantes, cambios
       // de tema). Solo interesa el texto: pintar los demás llenaría la conversación
       // de ruido que el usuario no escribió.
       if (raw.type !== 'text') {
+        continue;
+      }
+      const existing = this.byId.get(raw.id);
+      if (existing) {
+        existing.content = raw.content?.message ?? '';
         continue;
       }
       const senderId = (raw.sender as { communicationUserId?: string })?.communicationUserId ?? '';
@@ -325,13 +295,17 @@ export class AcsChatService {
         senderName: raw.senderDisplayName || 'Participante',
         createdOn: raw.createdOn ? new Date(raw.createdOn) : new Date(),
         mine: senderId === this.identity,
-        attachment: this.attachmentFrom(raw.metadata),
+        attachments: messageAttachments(raw.metadata).map((file) => ({ ...file, loading: true })),
       };
       this.byId.set(raw.id, message);
-      void this.loadAttachment(raw.id, message.attachment);
+      if (senderId && !message.mine) received.push(raw.id);
+      for (const file of message.attachments) void this.loadAttachment(message, file);
     }
 
     this.publish();
+    for (let offset = 0; offset < received.length; offset += 100) {
+      this.session.confirmReceived(threadId, received.slice(offset, offset + 100));
+    }
   }
 
   /** Deja la lista ordenada por hora, que es como la espera la plantilla. */
@@ -341,42 +315,16 @@ export class AcsChatService {
     );
   }
 
-  private attachmentFrom(metadata?: Record<string, string>): ChatAttachmentView | undefined {
-    const id = metadata?.['attachmentId'];
-    const filename = metadata?.['attachmentName'];
-    const contentType = metadata?.['attachmentType'];
-    if (!id || !filename || !contentType) return undefined;
-    return {
-      id,
-      filename,
-      contentType,
-      sizeBytes: Number(metadata?.['attachmentSize'] ?? 0),
-      loading: true,
-    };
-  }
-
-  private async loadAttachment(messageId: string, attachment?: ChatAttachmentView): Promise<void> {
-    if (!attachment || attachment.url || attachment.error) return;
+  private async loadAttachment(message: ChatMessage, file: ChatAttachmentView): Promise<void> {
     try {
-      const blob = await firstValueFrom(this.chat.downloadAttachment(attachment.id));
-      const current = this.byId.get(messageId);
-      if (!current?.attachment || current.attachment.id !== attachment.id) return;
-      current.attachment = {
-        ...current.attachment,
-        url: URL.createObjectURL(blob),
-        loading: false,
-      };
-      this.byId.set(messageId, { ...current });
+      const blob = await firstValueFrom(this.chat.downloadAttachment(file.id));
+      if (this.byId.get(message.id) !== message) return;
+      file.url = URL.createObjectURL(blob);
     } catch {
-      const current = this.byId.get(messageId);
-      if (!current?.attachment) return;
-      current.attachment = {
-        ...current.attachment,
-        loading: false,
-        error: 'No se pudo abrir el archivo',
-      };
-      this.byId.set(messageId, { ...current });
+      if (this.byId.get(message.id) !== message) return;
+      file.error = 'No se pudo abrir el archivo';
     }
+    file.loading = false;
     this.publish();
   }
 
@@ -389,6 +337,7 @@ export class AcsChatService {
 
   private senderDisplayName(): string {
     return (
+      this.profileDisplayName ||
       this.auth.currentUser()?.name?.trim() ||
       this.auth.userEmail()?.trim() ||
       (this.auth.userType() === 'MEDICO' ? 'Equipo médico' : 'Paciente')

@@ -35,8 +35,8 @@
         [ngModel]="consultationType()"
         (ngModelChange)="consultationType.set($event)"
         [disabled]="creating()"
-        aria-label="Tipo de consulta">
-        <option value="">Tipo (opcional)</option>
+        aria-label="Motivo de consulta">
+        <option value="">Motivo (opcional)</option>
         @for (tipo of consultationTypes; track tipo) {
           <option [value]="tipo">{{ tipo }}</option>
         }
@@ -103,9 +103,11 @@
             @if (t.awaitingReply) {
               <span class="tag-wait" title="Tu último mensaje sigue sin respuesta">Sin responder</span>
             }
-            @if (t.hasUnread) {
-              <span class="dot" title="Hay mensajes nuevos"></span>
-            }
+            @if ((t.unreadCount ?? 0) > 0) {
+                <span class="tag-wait" title="Mensajes sin leer">{{ t.unreadCount }}</span>
+              } @else if (t.unreadCount === undefined && t.hasUnread) {
+                <span class="dot" title="Hay mensajes nuevos"></span>
+              }
             <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>
           </div>
         </li>
@@ -151,7 +153,9 @@
               </span>
             </div>
             <div class="ticket-side">
-              @if (t.hasUnread) {
+              @if ((t.unreadCount ?? 0) > 0) {
+                <span class="tag-wait" title="Mensajes sin leer">{{ t.unreadCount }}</span>
+              } @else if (t.unreadCount === undefined && t.hasUnread) {
                 <span class="dot" title="Hay mensajes nuevos"></span>
               }
               <span class="status status-{{ t.status }}">{{ statusLabel[t.status] }}</span>

@@ -8,6 +8,7 @@ import { AzureSuccess } from './auth/azure-success/azure-success';
 import { MedicoLogin } from './auth/medico-login/medico-login';
 import { HomeMedicos } from './medicos/home-medicos';
 import { ChatRoom } from './chat/chat-room';
+import { ChatHistory } from './chat/chat-history';
 import { authGuard } from './auth.guard';
 
 export const routes: Routes = [
@@ -30,6 +31,7 @@ export const routes: Routes = [
 
   // Conversación de un requerimiento. Sirve a paciente y médico: quién puede hacer
   // qué lo decide el rol que devuelve el backend, no la ruta.
+  { path: 'chat/:ticketId/history', component: ChatHistory, canActivate: [authGuard] },
   { path: 'chat/:ticketId', component: ChatRoom, canActivate: [authGuard] },
 
   // Rutas del callback de Apple (deben coincidir con las URLs registradas en el backend).

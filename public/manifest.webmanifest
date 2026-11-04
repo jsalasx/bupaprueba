@@ -1,0 +1,6 @@
+{
+  "name": "Bupaprueba",
+  "short_name": "Bupaprueba",
+  "start_url": "/",
+  "display": "standalone"
+}

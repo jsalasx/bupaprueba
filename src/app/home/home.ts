@@ -1,11 +1,12 @@
-import { Component, OnInit, inject, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
-import { firstValueFrom } from 'rxjs';
+import { debounceTime, firstValueFrom } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { apiErrorMessage, AuthService } from '../auth.service';
-import { ChatService, Ticket, TICKET_STATUS_LABEL } from '../chat/chat.service';
+import { ChatService, CONSULTATION_REASONS, ConsultationReason, Ticket, TICKET_STATUS_LABEL } from '../chat/chat.service';
 
 /**
  * Home del paciente: abre requerimientos y entra a conversar en los que ya tiene.
@@ -31,6 +32,7 @@ import { ChatService, Ticket, TICKET_STATUS_LABEL } from '../chat/chat.service';
 })
 export class Home implements OnInit {
   private readonly chat = inject(ChatService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly router = inject(Router);
 
   readonly statusLabel = TICKET_STATUS_LABEL;
@@ -47,7 +49,7 @@ export class Home implements OnInit {
   readonly showHistory = signal(false);
 
   readonly subject = signal('');
-  readonly consultationType = signal('');
+  readonly consultationType = signal<ConsultationReason | ''>('');
   readonly creating = signal(false);
   readonly createError = signal<string | null>(null);
   /**
@@ -57,14 +59,7 @@ export class Home implements OnInit {
    */
   readonly reusedNotice = signal<string | null>(null);
 
-  /** Tipos de consulta ofrecidos. El backend no impone catálogo: esto es del cliente. */
-  readonly consultationTypes = [
-    'GENERAL',
-    'RESULTADOS_EXAMEN',
-    'MEDICAMENTOS',
-    'DERIVACION',
-    'OTRO',
-  ];
+  readonly consultationTypes = CONSULTATION_REASONS;
 
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -72,6 +67,11 @@ export class Home implements OnInit {
   constructor(public auth: AuthService) {}
 
   ngOnInit(): void {
+    this.chat.inboxChanges.pipe(debounceTime(500), takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => {
+        void this.loadActive();
+        if (this.showHistory()) void this.loadTickets();
+      });
     void this.loadActive();
   }
 

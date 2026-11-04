@@ -196,3 +196,54 @@
   font-size: 0.7rem;
   font-weight: 600;
 }
+
+.medicos:has(.mine-layout) {
+  max-width: 1320px;
+}
+
+.mine-layout {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(0, 2fr);
+  gap: 0.75rem;
+  height: max(30rem, calc(100dvh - 12rem));
+  margin-top: 1rem;
+}
+
+.mine-sidebar, .mine-room {
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #eaecf0;
+  border-radius: 0.6rem;
+}
+
+.mine-sidebar {
+  overflow: auto;
+  padding: 0.5rem;
+}
+
+.mine-sidebar .item {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+
+.mine-sidebar .item.selected {
+  background: #eef2ff;
+}
+
+.mine-room {
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .mine-layout {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: 0.35rem;
+  }
+}
+
+.mine-preview {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

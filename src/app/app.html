@@ -2,9 +2,10 @@
 <button
   class="push-btn"
   (click)="notifications.enable()"
+  [disabled]="notifications.enabling()"
   title="Registrar este navegador o dispositivo para push"
 >
-  <span class="push-label">Activar push</span>
+  <span class="push-label">{{ notifications.enabling() ? 'Activando…' : 'Activar push' }}</span>
   <span class="push-status"> · {{ notifications.status() }}</span>
 </button>
 <button
@@ -19,12 +20,22 @@
   }
 </button>
 
+@if (notifications.pushError(); as error) {
+  <p class="push-feedback" role="alert">{{ error }}</p>
+}
+
 @if (notifications.historyOpen()) {
   <section class="notification-panel">
     <header>
       <strong>Notificaciones</strong>
       <button (click)="notifications.closeHistory()" aria-label="Cerrar">×</button>
     </header>
+    <button class="notification-read-all" (click)="notifications.markAllRead()" [disabled]="notifications.markingAllRead()">
+      {{ notifications.markingAllRead() ? 'Marcando…' : 'Marcar todas como leídas' }}
+    </button>
+    @if (notifications.markAllReadError(); as error) {
+      <p class="notification-empty" role="alert">{{ error }}</p>
+    }
     @if (notifications.history().length === 0) {
       <p class="notification-empty">Todavía no tienes notificaciones.</p>
     }
